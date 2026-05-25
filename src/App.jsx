@@ -626,19 +626,20 @@ export default function App() {
   }
 
   async function handleSaturdayResponse(status) {
-    if (!user || !nextSatDate) return;
+    if (!user) return;
     setShowSaturdayPrompt(false);
-    const today = getTodayStr();
-    // Count offs this month
-    const monthSats = getSaturdaysInMonth(new Date(nextSatDate).getFullYear(), new Date(nextSatDate).getMonth());
+    const targetDate = satPromptMode === "past" ? lastSatDate : nextSatDate;
+    if (!targetDate) return;
+    const monthSats = getSaturdaysInMonth(new Date(targetDate + "T00:00:00").getFullYear(), new Date(targetDate + "T00:00:00").getMonth());
     const offsThisMonth = saturdays.filter(s => s.lawyer_id === user.id && monthSats.includes(s.date) && s.status === "off").length;
     const countsAsEl = status === "off" && offsThisMonth >= 2;
-    const result = await db.insert("Saturdays", { lawyer_id: user.id, date: nextSatDate, status, counts_as_el: countsAsEl });
+    const result = await db.insert("Saturdays", { lawyer_id: user.id, date: targetDate, status, counts_as_el: countsAsEl });
     if (Array.isArray(result) && result[0]) {
       setSaturdays(prev => [...prev, result[0]]);
-      if (countsAsEl) notify("Note: You've used your 2 Saturday offs this month. This Saturday will count as Earned Leave.", "error");
-      else notify(status === "working" ? "Saturday marked as working " : "Saturday off recorded ");
+      if (countsAsEl) notify("Note: You have used your 2 Saturday offs this month. This Saturday will count as Earned Leave.", "error");
+      else notify(status === "working" ? "Saturday marked as working" : "Saturday off recorded");
     }
+    setSatPromptMode("upcoming");
   }
 
   async function handleSignOutWithSaturdayCheck() {
@@ -1028,7 +1029,7 @@ Thank you.`);
 
             <div className="card">
               <div className="ct">Office Today</div>
-              {lawyers.filter(l => l.email?.toLowerCase() !== userEmail).map(l => {
+              {lawyers.filter(l => l.email?.toLowerCase() !== PARALEGAL_EMAIL).map(l => {
                 const lEmail = l.email?.toLowerCase();
                 const lMeta = COUNSEL_META[lEmail];
                 const att = attendance.find(a => a.lawyer_id === l.id && a.date === today);
@@ -1481,7 +1482,7 @@ Thank you.`);
               <table>
                 <thead><tr><th>Counsel</th><th>Status</th><th>Present</th><th>EL Left</th><th>CL/SL Left</th><th>BL Used</th><th>Pending</th></tr></thead>
                 <tbody>
-                  {lawyers.filter(l => l.email?.toLowerCase() !== userEmail).map(l => {
+                  {lawyers.filter(l => l.email?.toLowerCase() !== PARALEGAL_EMAIL).map(l => {
                     const lEmail = l.email?.toLowerCase();
                     const elB = getBalance(l.id, lEmail, leaves, "Earned Leave");
                     const slB = getBalance(l.id, lEmail, leaves, "Casual/Sick Leave");
