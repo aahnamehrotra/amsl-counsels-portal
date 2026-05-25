@@ -517,25 +517,30 @@ export default function App() {
     if (lawyer) {
       const nextSat = getNextSaturday(tod);
       setNextSatDate(nextSat);
-      const satRecord = (Array.isArray(sv) ? sv : []).find(s => s.lawyer_id === lawyer.id && s.date === nextSat);
 
-      // Show prompt on Friday (all day) or Monday (if still blank for last Saturday)
-      if (isFriday(tod) && !satRecord) {
-        setShowSaturdayPrompt(true);
+      if (isFriday(tod)) {
+        // Friday: ask about UPCOMING Saturday
+        const satRecord = (Array.isArray(sv) ? sv : []).find(s => s.lawyer_id === lawyer.id && s.date === nextSat);
+        if (!satRecord) {
+          setSatPromptMode("upcoming");
+          setShowSaturdayPrompt(true);
+        }
       } else if (isMonday(tod)) {
-        // Check last Saturday
+        // Monday: ask about LAST Saturday (2 days ago)
         const lastSat = new Date(tod + "T00:00:00");
         lastSat.setDate(lastSat.getDate() - 2);
-        const lastSatStr = lastSat.toISOString().split("T")[0];
+        const y = lastSat.getFullYear();
+        const m = String(lastSat.getMonth()+1).padStart(2,"0");
+        const d = String(lastSat.getDate()).padStart(2,"0");
+        const lastSatStr = `${y}-${m}-${d}`;
+        setLastSatDate(lastSatStr);
         const lastSatRecord = (Array.isArray(sv) ? sv : []).find(s => s.lawyer_id === lawyer.id && s.date === lastSatStr);
         if (!lastSatRecord) {
-          // Auto-mark as off
-          await db.insert("Saturdays", { lawyer_id: lawyer.id, date: lastSatStr, status: "off", counts_as_el: false, auto_marked: true });
-          setSaturdays(prev => [...prev, { lawyer_id: lawyer.id, date: lastSatStr, status: "off", counts_as_el: false, auto_marked: true }]);
+          setSatPromptMode("past");
+          setShowSaturdayPrompt(true);
         }
-        // Show prompt for upcoming Saturday if not responded
-        if (!satRecord) setShowSaturdayPrompt(true);
       }
+      // Tue/Wed/Thu/Sat/Sun: never show prompt
     }
     setLoading(false);
   }
