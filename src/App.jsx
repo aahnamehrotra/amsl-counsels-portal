@@ -519,14 +519,15 @@ export default function App() {
       setNextSatDate(nextSat);
 
       if (isFriday(tod)) {
-        // Friday: ask about UPCOMING Saturday
+        // Friday: ask about UPCOMING Saturday only if not already recorded
         const satRecord = (Array.isArray(sv) ? sv : []).find(s => s.lawyer_id === lawyer.id && s.date === nextSat);
         if (!satRecord) {
           setSatPromptMode("upcoming");
           setShowSaturdayPrompt(true);
         }
+        // If already recorded - never show prompt
       } else if (isMonday(tod)) {
-        // Monday: ask about LAST Saturday (2 days ago)
+        // Monday: ask about LAST Saturday (2 days ago) only if not already recorded
         const lastSat = new Date(tod + "T00:00:00");
         lastSat.setDate(lastSat.getDate() - 2);
         const y = lastSat.getFullYear();
@@ -536,9 +537,11 @@ export default function App() {
         setLastSatDate(lastSatStr);
         const lastSatRecord = (Array.isArray(sv) ? sv : []).find(s => s.lawyer_id === lawyer.id && s.date === lastSatStr);
         if (!lastSatRecord) {
+          // Only show if not already recorded in DB
           setSatPromptMode("past");
           setShowSaturdayPrompt(true);
         }
+        // If already recorded - never show prompt
       }
       // Tue/Wed/Thu/Sat/Sun: never show prompt
     }
@@ -1025,7 +1028,7 @@ Thank you.`);
 
             <div className="card">
               <div className="ct">Office Today</div>
-              {lawyers.filter(l => !l.is_admin).map(l => {
+              {lawyers.filter(l => l.email?.toLowerCase() !== userEmail).map(l => {
                 const lEmail = l.email?.toLowerCase();
                 const lMeta = COUNSEL_META[lEmail];
                 const att = attendance.find(a => a.lawyer_id === l.id && a.date === today);
@@ -1478,7 +1481,7 @@ Thank you.`);
               <table>
                 <thead><tr><th>Counsel</th><th>Status</th><th>Present</th><th>EL Left</th><th>CL/SL Left</th><th>BL Used</th><th>Pending</th></tr></thead>
                 <tbody>
-                  {lawyers.filter(l => !l.is_admin).map(l => {
+                  {lawyers.filter(l => l.email?.toLowerCase() !== userEmail).map(l => {
                     const lEmail = l.email?.toLowerCase();
                     const elB = getBalance(l.id, lEmail, leaves, "Earned Leave");
                     const slB = getBalance(l.id, lEmail, leaves, "Casual/Sick Leave");
