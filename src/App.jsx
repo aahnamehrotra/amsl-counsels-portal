@@ -447,6 +447,8 @@ export default function App() {
   const [saturdays, setSaturdays] = useState([]);
   const [showSaturdayPrompt, setShowSaturdayPrompt] = useState(false);
   const [nextSatDate, setNextSatDate] = useState("");
+  const [lastSatDate, setLastSatDate] = useState("");
+  const [satPromptMode, setSatPromptMode] = useState("upcoming"); // "upcoming" or "past"
   const [correctionForm, setCorrectionForm] = useState({ type: "attendance", date: "", note: "", currentValue: "" });
   const [showCorrectionModal, setShowCorrectionModal] = useState(false);
   const [corrections, setCorrections] = useState([]);
@@ -1730,17 +1732,19 @@ Thank you.`);
       </div>
 
       {/* Saturday Prompt Modal */}
-      {showSaturdayPrompt && nextSatDate && (
+      {showSaturdayPrompt && (nextSatDate || lastSatDate) && (
         <div className="modal-overlay">
           <div className="modal">
-            <div className="modal-title">This Saturday</div>
+            <div className="modal-title">{satPromptMode === "past" ? "Last Saturday" : "This Saturday"}</div>
             <div className="modal-sub">
-              {getDayOfWeek(nextSatDate)}, {formatDate(nextSatDate)}<br/>
-              Will you be coming in to work?
+              {satPromptMode === "past"
+                ? <>{getDayOfWeek(lastSatDate)}, {formatDate(lastSatDate)}<br/>Did you come in to work last Saturday?</>
+                : <>{getDayOfWeek(nextSatDate)}, {formatDate(nextSatDate)}<br/>Will you be coming in to work this Saturday?</>
+              }
             </div>
             <div className="modal-btns">
-              <button className="btn bg" style={{ flex: 1 }} onClick={() => handleSaturdayResponse("working")}>Yes, I'll be in</button>
-              <button className="btn bo" style={{ flex: 1 }} onClick={() => handleSaturdayResponse("off")}>Taking the day off</button>
+              <button className="btn bg" style={{ flex: 1 }} onClick={() => handleSaturdayResponse("working")}>{satPromptMode === "past" ? "Yes, I worked" : "Yes, I'll be in"}</button>
+              <button className="btn bo" style={{ flex: 1 }} onClick={() => handleSaturdayResponse("off")}>{satPromptMode === "past" ? "No, I was off" : "Taking the day off"}</button>
             </div>
             <button onClick={() => setShowSaturdayPrompt(false)} style={{ background: "none", border: "none", color: "#7a7a9a", fontFamily: "DM Mono, monospace", fontSize: 10, cursor: "pointer", marginTop: 14, display: "block", letterSpacing: "0.08em" }}>
               Remind me later
