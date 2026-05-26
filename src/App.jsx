@@ -73,6 +73,13 @@ const db = {
     const res = await fetch(url, { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } });
     return res.json();
   },
+  async delete(table, id) {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`, {
+      method: "DELETE",
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, Prefer: "return=minimal" }
+    });
+    return res.ok;
+  },
   async insert(table, data) {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
       method: "POST",
@@ -815,7 +822,7 @@ export default function App() {
 
   async function handleDeleteAttendance(attId, dateStr) {
     if (!window.confirm("Delete attendance record for " + formatDate(dateStr) + "?")) return;
-    await fetch(`${SUPABASE_URL}/rest/v1/Attendance?id=eq.${attId}`, { method: "DELETE", headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${session}`, "Content-Type": "application/json" } });
+    await db.delete("Attendance", attId);
     setAttendance(prev => prev.filter(a => a.id !== attId));
     notify("Attendance record deleted");
     if (!isFounder(user)) {
