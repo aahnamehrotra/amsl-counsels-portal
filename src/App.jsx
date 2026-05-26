@@ -9,12 +9,12 @@ const COUNSEL_META = {
   "aahna.mehrotra@amsportslaw.com": {
     joinDate: "2017-06-28", probationEnd: "2017-06-28",
     noticeByFirm: null, noticeByCounsel: null, lockInEnd: null, isFounder: true,
-    attendanceFrom: "2026-06-01"
+    attendanceFrom: "2026-05-25"
   },
   "riyarajkumar.sharma@amsportslaw.com": {
     joinDate: "2023-06-01", probationEnd: "2023-09-01",
     noticeByFirm: 1, noticeByCounsel: 3, lockInEnd: null,
-    role: "associate_partner", attendanceFrom: "2026-06-01"
+    role: "associate_partner", attendanceFrom: "2026-05-25"
   },
   "rupakshi.choudhary@amsportslaw.com": {
     joinDate: "2025-10-01", probationEnd: "2026-01-01",
@@ -561,6 +561,8 @@ export default function App() {
   const [showInternPicker, setShowInternPicker] = useState(false);
   const [leaveOverlapWarning, setLeaveOverlapWarning] = useState([]);
   const [showForgotSignout, setShowForgotSignout] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [showNotifications, setShowNotifications] = useState(false);
   const [missedSignoutDate, setMissedSignoutDate] = useState("");
 
   const today = getTodayStr();
@@ -611,7 +613,8 @@ export default function App() {
     }
 
     // Load interns and intern attendance
-    const [iv, ia] = await Promise.all([db.get("Interns"), db.get("InternAttendance")]);
+    const [iv, ia, nv] = await Promise.all([db.get("Interns"), db.get("InternAttendance"), db.get("Notifications")]);
+    setNotifications(Array.isArray(nv) ? nv.filter(n => n.lawyer_id === (lawyersList.find(lw => lw.email?.toLowerCase() === email)?.id)) : []);
     setInterns(Array.isArray(iv) ? iv : []);
     setInternAttendance(Array.isArray(ia) ? ia : []);
 
@@ -1067,6 +1070,52 @@ Thank you.`);
           <img src="https://amsportslaw.com/img/amsport-logo.png" alt="AM Sports Law & Management Co." style={{ height: 32, objectFit: "contain" }} />
         </div>
         {navItems.map(v => <button key={v} className={`nb${view === v ? " active" : ""}`} onClick={() => setView(v)}>{v}</button>)}
+        {/* Notifications Bell */}
+        <div style={{ position: "relative", marginLeft: 12 }}>
+          <button onClick={() => setShowNotifications(s => !s)} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(255,255,255,.8)", fontSize: 20, padding: "0 8px", position: "relative", lineHeight: 1 }}>
+            &#9993;
+            {notifications.filter(n => !n.read).length > 0 && (
+              <span style={{ position: "absolute", top: -6, right: -2, background: "#e53935", color: "#fff", borderRadius: "50%", width: 16, height: 16, fontSize: 9, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Raleway, sans-serif", fontWeight: 700 }}>
+                {notifications.filter(n => !n.read).length}
+              </span>
+            )}
+          </button>
+          {showNotifications && (
+            <div style={{ position: "absolute", right: 0, top: 48, background: "#fff", border: "1px solid #d0e4f4", borderRadius: 4, width: 320, boxShadow: "0 8px 24px rgba(10,35,66,.15)", zIndex: 200, maxHeight: 400, overflowY: "auto" }}>
+              <div style={{ padding: "12px 16px", borderBottom: "1px solid #e8f0f8", fontFamily: "Raleway, sans-serif", fontSize: 10, fontWeight: 700, color: "#4a9fd4", letterSpacing: "0.12em", textTransform: "uppercase", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                Notifications
+                {notifications.filter(n => !n.read).length > 0 && (
+                  <button onClick={async () => {
+                    await Promise.all(notifications.filter(n => !n.read).map(n => db.update("Notifications", n.id, { read: true })));
+                    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+                    setShowNotifications(false);
+                  }} style={{ background: "none", border: "none", fontFamily: "Raleway, sans-serif", fontSize: 10, color: "#7a94aa", cursor: "pointer" }}>Mark all read</button>
+                )}
+              </div>
+              {notifications.length === 0 && (
+                <div style={{ padding: "20px 16px", fontFamily: "Raleway, sans-serif", fontSize: 12, color: "#7a94aa", textAlign: "center" }}>No notifications</div>
+              )}
+              {[...notifications].reverse().map(n => (
+                <div key={n.id} style={{ padding: "12px 16px", borderBottom: "1px solid #f0f4f8", background: n.read ? "#fff" : "#f0f7ff" }}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                    <div style={{ width: 8, height: 8, borderRadius: "50%", background: n.type?.includes("approved") ? "#2e7d32" : n.type?.includes("rejected") ? "#c62828" : "#4a9fd4", flexShrink: 0, marginTop: 4 }} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontFamily: "Raleway, sans-serif", fontSize: 12, color: "#0a2342", lineHeight: 1.5 }}>{n.message}</div>
+                      <div style={{ fontFamily: "Raleway, sans-serif", fontSize: 10, color: "#7a94aa", marginTop: 3 }}>{formatDate(n.created_at?.slice(0,10))}</div>
+                    </div>
+                    {!n.read && (
+                      <button onClick={async () => {
+                        await db.update("Notifications", n.id, { read: true });
+                        setNotifications(prev => prev.map(nn => nn.id === n.id ? { ...nn, read: true } : nn));
+                      }} style={{ background: "none", border: "none", color: "#7a94aa", cursor: "pointer", fontSize: 14 }}>x</button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         <div className="uc"><div className="av">{getInitials(user?.name)}</div>{user?.name.split(" ")[0]}</div>
         <button className="lb" onClick={() => { localStorage.removeItem("amsl_session"); setSession(null); setCurrentLawyer(null); setLawyers([]); setAttendance([]); setLeaves([]); }}>Sign Out</button>
       </div>
