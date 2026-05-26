@@ -278,6 +278,8 @@ function getHoursWorked(signIn, signOut) {
   return Math.round(diff * 10) / 10;
 }
 
+function isShortSession(signIn, signOut) { if (!signIn || !signOut) return false; return getHoursWorked(signIn, signOut) < 0.5; }
+
 function classifyDay(signIn, signOut) {
   if (!signIn) return "absent";
   const hours = getHoursWorked(signIn, signOut);
@@ -362,7 +364,8 @@ function getAttendanceSummary(lawyerId, lawyerJoinDate, attendanceList, leavesLi
   });
 
   const avgHours = daysPresent > 0 ? Math.round((totalHours / daysPresent) * 10) / 10 : 0;
-  return { daysPresent, lateDays, fullDays, halfDays, shortDays, dayOffDue, avgHours, totalHours: Math.round(totalHours * 10) / 10, unexplained, lateList, shortList, workingDays: workingDays.length };
+  const shortSessions = records.filter(r => isShortSession(r.sign_in, r.sign_out));
+  return { daysPresent, lateDays, fullDays, halfDays, shortDays, dayOffDue, avgHours, totalHours: Math.round(totalHours * 10) / 10, unexplained, lateList, shortList, shortSessions, workingDays: workingDays.length };
 }
 
 // Saturday helpers
@@ -807,6 +810,17 @@ export default function App() {
       setCorrectionForm(resetForm);
       notify("Correction request submitted - awaiting Aahna's approval");
     }
+    }
+  }
+
+  async function handleDeleteAttendance(attId, dateStr) {
+    if (!window.confirm("Delete attendance record for " + formatDate(dateStr) + "?")) return;
+    await fetch(`${SUPABASE_URL}/rest/v1/Attendance?id=eq.${attId}`, { method: "DELETE", headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${session}`, "Content-Type": "application/json" } });
+    setAttendance(prev => prev.filter(a => a.id !== attId));
+    notify("Attendance record deleted");
+    if (!isFounder(user)) {
+      const aahna = lawyers.find(l => l.email?.toLowerCase() === "aahna.mehrotra@amsportslaw.com");
+      if (aahna) await db.insert("Notifications", { lawyer_id: aahna.id, message: user.name + " deleted their attendance record for " + formatDate(dateStr) + ".", type: "attendance_deleted", read: false });
     }
   }
 
@@ -1417,10 +1431,10 @@ Thank you.`);
             </div>
             <div className="card">
               <table>
-                <thead><tr><th>Date</th><th>Sign In</th><th>Sign Out</th><th>Duration</th><th>Status</th></tr></thead>
+                <thead><tr><th>Date</th><th>Sign In</th><th>Sign Out</th><th>Duration</th><th>Status</th><th></th></tr></thead>
                 <tbody>
                   {[...userAtt].sort((a, b) => b.date.localeCompare(a.date)).map((a, i) => (
-                    <tr key={i}><td>{formatDate(a.date)}</td><td>{formatTime(a.sign_in)}</td><td>{formatTime(a.sign_out)}</td><td>{getDuration(a.sign_in, a.sign_out) || "-"}</td><td><span className={`badge ${a.sign_out ? "ba" : "bp"}`}>{a.sign_out ? "Complete" : "In Progress"}</span></td></tr>
+                    <tr key={i}><td>{formatDate(a.date)}</td><td>{formatTime(a.sign_in)}</td><td>{formatTime(a.sign_out)}</td><td>{getDuration(a.sign_in, a.sign_out) || "-"}</td><td><span className={`badge ${a.sign_out ? "ba" : "bp"}`}>{a.sign_out ? "Complete" : "In Progress"}</span></td><td><button className="btn brd bsm" onClick={() => handleDeleteAttendance(a.id, a.date)}>Delete</button></td></tr>
                   ))}
                   {userAtt.length === 0 && <tr><td colSpan={5} style={{ color: "#aaaacc", textAlign: "center", paddingTop: 20 }}>No records yet.</td></tr>}
                 </tbody>
@@ -2059,10 +2073,10 @@ Thank you.`);
             <div className="ps">{selectedIntern.name} - Paralegal</div>
             <div className="card">
               <table>
-                <thead><tr><th>Date</th><th>Sign In</th><th>Sign Out</th><th>Duration</th><th>Status</th></tr></thead>
+                <thead><tr><th>Date</th><th>Sign In</th><th>Sign Out</th><th>Duration</th><th>Status</th><th></th></tr></thead>
                 <tbody>
                   {[...internAttendance.filter(a => a.intern_id === selectedIntern.id)].sort((a, b) => b.date.localeCompare(a.date)).map((a, i) => (
-                    <tr key={i}><td>{formatDate(a.date)}</td><td>{formatTime(a.sign_in)}</td><td>{formatTime(a.sign_out)}</td><td>{getDuration(a.sign_in, a.sign_out) || "-"}</td><td><span className={`badge ${a.sign_out ? "ba" : "bp"}`}>{a.sign_out ? "Complete" : "In Progress"}</span></td></tr>
+                    <tr key={i}><td>{formatDate(a.date)}</td><td>{formatTime(a.sign_in)}</td><td>{formatTime(a.sign_out)}</td><td>{getDuration(a.sign_in, a.sign_out) || "-"}</td><td><span className={`badge ${a.sign_out ? "ba" : "bp"}`}>{a.sign_out ? "Complete" : "In Progress"}</span></td><td><button className="btn brd bsm" onClick={() => handleDeleteAttendance(a.id, a.date)}>Delete</button></td></tr>
                   ))}
                   {internAttendance.filter(a => a.intern_id === selectedIntern.id).length === 0 && <tr><td colSpan={5} style={{ color: "#aaaacc", textAlign: "center", paddingTop: 20 }}>No records yet.</td></tr>}
                 </tbody>
