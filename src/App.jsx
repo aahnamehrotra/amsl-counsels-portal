@@ -799,17 +799,17 @@ export default function App() {
       }
       setShowCorrectionModal(false); setCorrectionForm(resetForm); notify("Correction applied immediately");
     } else {
-    const result = await db.insert("Corrections", {
-      lawyer_id: user.id, lawyer_name: user.name, type: correctionForm.type,
-      date: correctionForm.date, note: correctionForm.note,
-      current_value: currentValue, status: "pending", requested_on: getTodayStr()
-    });
-    if (Array.isArray(result) && result[0]) {
-      setCorrections(prev => [...prev, result[0]]);
-      setShowCorrectionModal(false);
-      setCorrectionForm(resetForm);
-      notify("Correction request submitted - awaiting Aahna's approval");
-    }
+      const result = await db.insert("Corrections", {
+        lawyer_id: user.id, lawyer_name: user.name, type: correctionForm.type,
+        date: correctionForm.date, note: correctionForm.note,
+        current_value: currentValue, status: "pending", requested_on: getTodayStr()
+      });
+      if (Array.isArray(result) && result[0]) {
+        setCorrections(prev => [...prev, result[0]]);
+        setShowCorrectionModal(false);
+        setCorrectionForm(resetForm);
+        notify("Correction request submitted - awaiting Aahna's approval");
+      }
     }
   }
 
