@@ -625,12 +625,12 @@ export default function App() {
     }
 
     // Check Saturday prompt conditions
-    const tod = getTodayStr();
+    const satTod = getTodayStr();
     if (lawyer) {
-      const nextSat = getNextSaturday(tod);
+      const nextSat = getNextSaturday(satTod);
       setNextSatDate(nextSat);
 
-      if (isFriday(tod)) {
+      if (isFriday(satTod)) {
         // Friday: ask about UPCOMING Saturday only if not already recorded
         const satRecord = (Array.isArray(sv) ? sv : []).find(s => s.lawyer_id === lawyer.id && s.date === nextSat);
         if (!satRecord) {
@@ -638,9 +638,9 @@ export default function App() {
           setShowSaturdayPrompt(true);
         }
         // If already recorded - never show prompt
-      } else if (isMonday(tod)) {
+      } else if (isMonday(satTod)) {
         // Monday: ask about LAST Saturday (2 days ago) only if not already recorded
-        const lastSat = new Date(tod + "T00:00:00");
+        const lastSat = new Date(satTod + "T00:00:00");
         lastSat.setDate(lastSat.getDate() - 2);
         const y = lastSat.getFullYear();
         const m = String(lastSat.getMonth()+1).padStart(2,"0");
