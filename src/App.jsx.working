@@ -771,67 +771,24 @@ export default function App() {
   async function handleCorrectionSubmit() {
     if (!correctionForm.date) return;
     if (!isFounder(user) && !correctionForm.note) { notify("Please provide a reason for the correction.", "error"); return; }
-    const resetForm = { type: "attendance", date: "", note: "", correctionField: "sign_out", signInTime: "", signOutTime: "" };
-    const parts = [];
-    if ((correctionForm.correctionField === "sign_in" || correctionForm.correctionField === "both") && correctionForm.signInTime) parts.push("Sign in: " + correctionForm.signInTime);
-    if ((correctionForm.correctionField === "sign_out" || correctionForm.correctionField === "both") && correctionForm.signOutTime) parts.push("Sign out: " + correctionForm.signOutTime);
-    const currentValue = parts.join(", ") || correctionForm.correctionField;
-
-    if (isFounder(user)) {
-      const attRec = attendance.find(a => a.lawyer_id === user.id && a.date === correctionForm.date);
-      const updates = {};
-      if ((correctionForm.correctionField === "sign_in" || correctionForm.correctionField === "both") && correctionForm.signInTime) {
-        const [hh,mm] = correctionForm.signInTime.split(":");
-        const d = new Date(correctionForm.date + "T00:00:00"); d.setHours(parseInt(hh),parseInt(mm),0,0);
-        updates.sign_in = d.toISOString();
-      }
-      if ((correctionForm.correctionField === "sign_out" || correctionForm.correctionField === "both") && correctionForm.signOutTime) {
-        const [hh,mm] = correctionForm.signOutTime.split(":");
-        const d = new Date(correctionForm.date + "T00:00:00"); d.setHours(parseInt(hh),parseInt(mm),0,0);
-        updates.sign_out = d.toISOString();
-      }
-      if (Object.keys(updates).length > 0) {
-        if (attRec) { const r = await db.update("Attendance", attRec.id, updates); if (Array.isArray(r)&&r[0]) setAttendance(p=>p.map(a=>a.id===attRec.id?r[0]:a)); }
-        else { const r = await db.insert("Attendance",{lawyer_id:user.id,date:correctionForm.date,...updates}); if (Array.isArray(r)&&r[0]) setAttendance(p=>[...p,r[0]]); }
-      }
-      setShowCorrectionModal(false); setCorrectionForm(resetForm); notify("Correction applied immediately");
-    } else {
     const result = await db.insert("Corrections", {
       lawyer_id: user.id, lawyer_name: user.name, type: correctionForm.type,
       date: correctionForm.date, note: correctionForm.note,
-      current_value: currentValue, status: "pending", requested_on: getTodayStr()
+      current_value: correctionForm.currentValue, status: "pending", requested_on: getTodayStr()
     });
     if (Array.isArray(result) && result[0]) {
       setCorrections(prev => [...prev, result[0]]);
       setShowCorrectionModal(false);
-      setCorrectionForm(resetForm);
-      notify("Correction request submitted - awaiting Aahna's approval");
-    }
+      setCorrectionForm({ type: "attendance", date: "", note: "", currentValue: "" });
+      notify("Correction request submitted - awaiting Aahna's approval ");
     }
   }
 
   async function handleCorrectionAction(id, action) {
-    const correction = corrections.find(c => c.id === id);
     const result = await db.update("Corrections", id, { status: action });
     if (Array.isArray(result) && result[0]) {
       setCorrections(prev => prev.map(c => c.id === id ? result[0] : c));
-      if (action === "approved" && correction && correction.type === "attendance") {
-        const attRec = attendance.find(a => a.lawyer_id === correction.lawyer_id && a.date === correction.date);
-        const val = correction.current_value || "";
-        const updates = {};
-        const siMatch = val.match(/Sign in: (\d{1,2}:\d{2})/i);
-        const soMatch = val.match(/Sign out: (\d{1,2}:\d{2})/i);
-        if (siMatch) { const [hh,mm]=siMatch[1].split(":"); const d=new Date(correction.date+"T00:00:00"); d.setHours(parseInt(hh),parseInt(mm),0,0); updates.sign_in=d.toISOString(); }
-        if (soMatch) { const [hh,mm]=soMatch[1].split(":"); const d=new Date(correction.date+"T00:00:00"); d.setHours(parseInt(hh),parseInt(mm),0,0); updates.sign_out=d.toISOString(); }
-        if (Object.keys(updates).length > 0) {
-          if (attRec) { const r=await db.update("Attendance",attRec.id,updates); if(Array.isArray(r)&&r[0]) setAttendance(p=>p.map(a=>a.id===attRec.id?r[0]:a)); }
-          else { const r=await db.insert("Attendance",{lawyer_id:correction.lawyer_id,date:correction.date,...updates}); if(Array.isArray(r)&&r[0]) setAttendance(p=>[...p,r[0]]); }
-        }
-        await db.insert("Notifications",{lawyer_id:correction.lawyer_id,message:"Your correction for "+formatDate(correction.date)+" has been approved.",type:"correction_approved",read:false});
-      } else if (action === "rejected" && correction) {
-        await db.insert("Notifications",{lawyer_id:correction.lawyer_id,message:"Your correction for "+formatDate(correction.date)+" was not approved.",type:"correction_rejected",read:false});
-      }
-      notify(action === "approved" ? "Correction approved and attendance updated" : "Correction rejected");
+      notify(action === "approved" ? "Correction approved " : "Correction rejected ");
     }
   }
 
@@ -1020,7 +977,6 @@ Thank you.`);
     .bout{background:#f5f5f5;color:#757575;}
     .blv{background:#f3e5f5;color:#6a1b9a;}
     .bho{background:#e3f2fd;color:#0d47a1;}
-    .bfirm{background:#e8f5e9;color:#1b5e20;}
     .bfirm{background:#e8f5e9;color:#1b5e20;}
     .bprob{background:#fff3e0;color:#e65100;}
     .bberv{background:#e0f2f1;color:#00695c;}
@@ -1419,7 +1375,7 @@ Thank you.`);
               <table>
                 <thead><tr><th>Date</th><th>Sign In</th><th>Sign Out</th><th>Duration</th><th>Status</th></tr></thead>
                 <tbody>
-                  {[...userAtt].sort((a, b) => b.date.localeCompare(a.date)).map((a, i) => (
+                  {[...userAtt].reverse().map((a, i) => (
                     <tr key={i}><td>{formatDate(a.date)}</td><td>{formatTime(a.sign_in)}</td><td>{formatTime(a.sign_out)}</td><td>{getDuration(a.sign_in, a.sign_out) || "-"}</td><td><span className={`badge ${a.sign_out ? "ba" : "bp"}`}>{a.sign_out ? "Complete" : "In Progress"}</span></td></tr>
                   ))}
                   {userAtt.length === 0 && <tr><td colSpan={5} style={{ color: "#aaaacc", textAlign: "center", paddingTop: 20 }}>No records yet.</td></tr>}
