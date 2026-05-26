@@ -8,7 +8,8 @@ const PARALEGAL_EMAIL = "paralegal@amsportslaw.com";
 const COUNSEL_META = {
   "aahna.mehrotra@amsportslaw.com": {
     joinDate: "2017-06-28", probationEnd: "2017-06-28",
-    noticeByFirm: null, noticeByCounsel: null, lockInEnd: null, isFounder: true
+    noticeByFirm: null, noticeByCounsel: null, lockInEnd: null, isFounder: true,
+    attendanceFrom: "2026-06-01"
   },
   "riyarajkumar.sharma@amsportslaw.com": {
     joinDate: "2023-06-01", probationEnd: "2023-09-01",
@@ -282,7 +283,7 @@ function classifyDay(signIn, signOut) {
   if (!signOut) return "in-progress";
   if (hours < 3.5) return "day-off";
   if (hours < 5.5) return "half-day";
-  if (hours < 6.0) return "short-day";
+  if (hours < 6.5) return "short-day";
   return "full-day";
 }
 
@@ -558,6 +559,8 @@ export default function App() {
   const [internForm, setInternForm] = useState({ name: "", start_date: "", end_date: "" });
   const [showInternPicker, setShowInternPicker] = useState(false);
   const [leaveOverlapWarning, setLeaveOverlapWarning] = useState([]);
+  const [showForgotSignout, setShowForgotSignout] = useState(false);
+  const [missedSignoutDate, setMissedSignoutDate] = useState("");
 
   const today = getTodayStr();
 
@@ -593,6 +596,17 @@ export default function App() {
     setCorrections(Array.isArray(cv) ? cv : []);
     const lawyer = lawyersList.find(lw => lw.email?.toLowerCase() === email) || null;
     setCurrentLawyer(lawyer);
+
+    // Check if forgot to sign out yesterday
+    const tod = getTodayStr();
+    const yesterday = new Date(tod + "T00:00:00");
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth()+1).padStart(2,"0")}-${String(yesterday.getDate()).padStart(2,"0")}`;
+    const yesterdayAtt = (Array.isArray(a) ? a : []).find(att => att.lawyer_id === lawyer?.id && att.date === yStr);
+    if (yesterdayAtt?.sign_in && !yesterdayAtt?.sign_out) {
+      setMissedSignoutDate(yStr);
+      setShowForgotSignout(true);
+    }
 
     // Load interns and intern attendance
     const [iv, ia] = await Promise.all([db.get("Interns"), db.get("InternAttendance")]);
@@ -1325,8 +1339,9 @@ Thank you.`);
           const monthEnd = currentMonth + "-" + String(daysInMonth).padStart(2,"0");
           const meta = COUNSEL_META[userEmail];
           if (!meta) return null;
-          const fromDate = meta.joinDate > monthStart ? meta.joinDate : monthStart;
-          const summary = getAttendanceSummary(user?.id, meta.joinDate, attendance, leaves, fromDate, today < monthEnd ? today : monthEnd);
+          const attStart = meta.attendanceFrom || meta.joinDate;
+          const fromDate = attStart > monthStart ? attStart : monthStart;
+          const summary = getAttendanceSummary(user?.id, attStart, attendance, leaves, fromDate, today < monthEnd ? today : monthEnd);
           const monthSats = getSaturdaysInMonth(new Date(monthStart + "T00:00:00").getFullYear(), new Date(monthStart + "T00:00:00").getMonth());
           const satOffs = saturdays.filter(s => s.lawyer_id === user?.id && monthSats.includes(s.date) && s.status === "off").length;
           return (
@@ -1336,8 +1351,8 @@ Thank you.`);
                 <div style={{ fontFamily: "Raleway, sans-serif", fontSize: 10, color: "#4a9fd4", fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 8 }}>Classification Key</div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
                   {[
-                    ["Full Day", "5.5+ hours worked", "#2e7d32"],
-                    ["Short Day", "5.5 to 6 hrs -- more than 2/month flagged", "#b7860a"],
+                    ["Full Day", "6.5+ hours worked", "#2e7d32"],
+                    ["Short Day", "5.5 to 6.5 hrs -- more than 2/month flagged", "#b7860a"],
                     ["Half Day", "3.5 to 5.5 hours -- deducted from EL", "#6a1b9a"],
                     ["Day Off (auto)", "Under 3.5 hours -- treated as absent", "#c62828"],
                     ["Late Arrival", "Sign-in after 10:00 AM", "#1565c0"],
@@ -1702,8 +1717,9 @@ Thank you.`);
               return lawyers.filter(l => !isOnMaternity(l.email?.toLowerCase())).map(l => {
                 const meta = COUNSEL_META[l.email?.toLowerCase()];
                 if (!meta) return null;
-                const fromDate = meta.joinDate > monthStart ? meta.joinDate : monthStart;
-                const summary = getAttendanceSummary(l.id, meta.joinDate, attendance, leaves, fromDate, monthEnd < today ? monthEnd : today);
+                const attStart = meta.attendanceFrom || meta.joinDate;
+                const fromDate = attStart > monthStart ? attStart : monthStart;
+                const summary = getAttendanceSummary(l.id, attStart, attendance, leaves, fromDate, monthEnd < today ? monthEnd : today);
                 const monthSats = getSaturdaysInMonth(new Date(monthStart + "T00:00:00").getFullYear(), new Date(monthStart + "T00:00:00").getMonth());
                 const satOffs = saturdays.filter(s => s.lawyer_id === l.id && monthSats.includes(s.date) && s.status === "off").length;
                 const satFlag = satOffs > 2;
@@ -2000,6 +2016,40 @@ Thank you.`);
           </>
         )}
       </div>
+
+      {/* Forgot Sign Out Modal */}
+      {showForgotSignout && (
+        <div className="modal-overlay">
+          <div className="modal">
+            <div className="modal-title">Forgot to Sign Out?</div>
+            <div className="modal-sub">
+              It looks like you did not sign out on {getDayOfWeek(missedSignoutDate)}, {formatDate(missedSignoutDate)}. Would you like to record a sign-out time for that day?
+            </div>
+            <div className="fld">
+              <label className="lbl">Sign Out Time ({getDayOfWeek(missedSignoutDate)}, {formatDate(missedSignoutDate)})</label>
+              <input type="time" className="inp" id="missed-signout-time" defaultValue="20:00" />
+            </div>
+            <div className="modal-btns">
+              <button className="btn bg" style={{ flex: 1 }} onClick={async () => {
+                const timeInput = document.getElementById("missed-signout-time").value;
+                const [hh, mm] = timeInput.split(":");
+                const signOutDate = new Date(missedSignoutDate + "T00:00:00");
+                signOutDate.setHours(parseInt(hh), parseInt(mm), 0, 0);
+                const rec = attendance.find(a => a.lawyer_id === user?.id && a.date === missedSignoutDate);
+                if (rec) {
+                  const result = await db.update("Attendance", rec.id, { sign_out: signOutDate.toISOString() });
+                  if (Array.isArray(result) && result[0]) {
+                    setAttendance(p => p.map(a => a.id === rec.id ? result[0] : a));
+                    notify("Sign out recorded for " + formatDate(missedSignoutDate));
+                  }
+                }
+                setShowForgotSignout(false);
+              }}>Record Sign Out</button>
+              <button className="btn bo" onClick={() => setShowForgotSignout(false)}>Dismiss</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Saturday Prompt Modal */}
       {showSaturdayPrompt && (nextSatDate || lastSatDate) && (
