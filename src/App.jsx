@@ -769,7 +769,8 @@ export default function App() {
   }
 
   async function handleCorrectionSubmit() {
-    if (!correctionForm.date || !correctionForm.note) return;
+    if (!correctionForm.date) return;
+    if (!isFounder(user) && !correctionForm.note) { notify("Please provide a reason for the correction.", "error"); return; }
     const result = await db.insert("Corrections", {
       lawyer_id: user.id, lawyer_name: user.name, type: correctionForm.type,
       date: correctionForm.date, note: correctionForm.note,
@@ -1843,7 +1844,7 @@ Thank you.`);
                     )}
 
                     {summary.unexplained.length > 0 && (
-                      <div>
+                      <div style={{ marginBottom: 10 }}>
                         <div style={{ fontFamily: "Raleway, sans-serif", fontSize: 10, color: "#c62828", letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: 700, marginBottom: 6 }}>Unexplained Absences</div>
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                           {summary.unexplained.map(d => (
@@ -1854,6 +1855,24 @@ Thank you.`);
                         </div>
                       </div>
                     )}
+                    {(() => {
+                      const monthCorr = corrections.filter(c => c.lawyer_id === l.id && c.requested_on >= monthStart && c.requested_on <= (monthEnd < today ? monthEnd : today));
+                      if (monthCorr.length === 0) return null;
+                      return (
+                        <div>
+                          <div style={{ fontFamily: "Raleway, sans-serif", fontSize: 10, color: monthCorr.length > 3 ? "#c62828" : "#7a94aa", letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: 700, marginBottom: 6 }}>
+                            Correction Requests This Month {monthCorr.length > 3 ? "-- Flagged: Excessive" : ""}
+                          </div>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                            {monthCorr.map(c => (
+                              <span key={c.id} style={{ background: "#f3e5f5", border: "1px solid #ce93d8", borderRadius: 12, padding: "2px 10px", fontFamily: "Raleway, sans-serif", fontSize: 10, color: "#6a1b9a" }}>
+                                {formatDate(c.date)} -- {c.type} -- {c.status}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 );
               });
@@ -1998,7 +2017,7 @@ Thank you.`);
               <table>
                 <thead><tr><th>Date</th><th>Sign In</th><th>Sign Out</th><th>Duration</th><th>Status</th></tr></thead>
                 <tbody>
-                  {[...internAttendance.filter(a => a.intern_id === selectedIntern.id)].reverse().map((a, i) => (
+                  {[...internAttendance.filter(a => a.intern_id === selectedIntern.id)].sort((a, b) => b.date.localeCompare(a.date)).map((a, i) => (
                     <tr key={i}><td>{formatDate(a.date)}</td><td>{formatTime(a.sign_in)}</td><td>{formatTime(a.sign_out)}</td><td>{getDuration(a.sign_in, a.sign_out) || "-"}</td><td><span className={`badge ${a.sign_out ? "ba" : "bp"}`}>{a.sign_out ? "Complete" : "In Progress"}</span></td></tr>
                   ))}
                   {internAttendance.filter(a => a.intern_id === selectedIntern.id).length === 0 && <tr><td colSpan={5} style={{ color: "#aaaacc", textAlign: "center", paddingTop: 20 }}>No records yet.</td></tr>}
