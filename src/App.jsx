@@ -13,7 +13,8 @@ const COUNSEL_META = {
   },
   "riyarajkumar.sharma@amsportslaw.com": {
     joinDate: "2023-06-01", probationEnd: "2023-09-01",
-    noticeByFirm: 1, noticeByCounsel: 3, lockInEnd: null
+    noticeByFirm: 1, noticeByCounsel: 3, lockInEnd: null,
+    role: "associate_partner", attendanceFrom: "2026-06-01"
   },
   "rupakshi.choudhary@amsportslaw.com": {
     joinDate: "2025-10-01", probationEnd: "2026-01-01",
@@ -598,12 +599,13 @@ export default function App() {
     setCurrentLawyer(lawyer);
 
     // Check if forgot to sign out yesterday
-    const tod = getTodayStr();
-    const yesterday = new Date(tod + "T00:00:00");
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth()+1).padStart(2,"0")}-${String(yesterday.getDate()).padStart(2,"0")}`;
+    const todCheck = getTodayStr();
+    const yesterdayCheck = new Date(todCheck + "T00:00:00");
+    yesterdayCheck.setDate(yesterdayCheck.getDate() - 1);
+    const yStr = `${yesterdayCheck.getFullYear()}-${String(yesterdayCheck.getMonth()+1).padStart(2,"0")}-${String(yesterdayCheck.getDate()).padStart(2,"0")}`;
     const yesterdayAtt = (Array.isArray(a) ? a : []).find(att => att.lawyer_id === lawyer?.id && att.date === yStr);
-    if (yesterdayAtt?.sign_in && !yesterdayAtt?.sign_out) {
+    // Only show if signed in yesterday but sign_out is explicitly null or empty string
+    if (yesterdayAtt?.sign_in && (yesterdayAtt?.sign_out === null || yesterdayAtt?.sign_out === "" || yesterdayAtt?.sign_out === undefined)) {
       setMissedSignoutDate(yStr);
       setShowForgotSignout(true);
     }
@@ -1340,8 +1342,11 @@ Thank you.`);
           const meta = COUNSEL_META[userEmail];
           if (!meta) return null;
           const attStart = meta.attendanceFrom || meta.joinDate;
-          const fromDate = attStart > monthStart ? attStart : monthStart;
-          const summary = getAttendanceSummary(user?.id, attStart, attendance, leaves, fromDate, today < monthEnd ? today : monthEnd);
+          // Never show absences before portal start date
+          const portalStart = "2026-05-25";
+          const effectiveStart = attStart > portalStart ? attStart : portalStart;
+          const fromDate = effectiveStart > monthStart ? effectiveStart : monthStart;
+          const summary = getAttendanceSummary(user?.id, effectiveStart, attendance, leaves, fromDate, today < monthEnd ? today : monthEnd);
           const monthSats = getSaturdaysInMonth(new Date(monthStart + "T00:00:00").getFullYear(), new Date(monthStart + "T00:00:00").getMonth());
           const satOffs = saturdays.filter(s => s.lawyer_id === user?.id && monthSats.includes(s.date) && s.status === "off").length;
           return (
@@ -1718,8 +1723,10 @@ Thank you.`);
                 const meta = COUNSEL_META[l.email?.toLowerCase()];
                 if (!meta) return null;
                 const attStart = meta.attendanceFrom || meta.joinDate;
-                const fromDate = attStart > monthStart ? attStart : monthStart;
-                const summary = getAttendanceSummary(l.id, attStart, attendance, leaves, fromDate, monthEnd < today ? monthEnd : today);
+                const portalStart = "2026-05-25";
+                const effectiveStart = attStart > portalStart ? attStart : portalStart;
+                const fromDate = effectiveStart > monthStart ? effectiveStart : monthStart;
+                const summary = getAttendanceSummary(l.id, effectiveStart, attendance, leaves, fromDate, monthEnd < today ? monthEnd : today);
                 const monthSats = getSaturdaysInMonth(new Date(monthStart + "T00:00:00").getFullYear(), new Date(monthStart + "T00:00:00").getMonth());
                 const satOffs = saturdays.filter(s => s.lawyer_id === l.id && monthSats.includes(s.date) && s.status === "off").length;
                 const satFlag = satOffs > 2;
