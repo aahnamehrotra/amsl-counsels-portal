@@ -1434,7 +1434,7 @@ Thank you.`);
                 <div className="pt">Attendance</div>
                 <div className="ps">Your sign-in history</div>
               </div>
-              <button className="btn bo bsm" style={{ marginBottom: 32 }} onClick={() => setShowCorrectionModal(true)}>Request Correction</button>
+              <button className="btn bo bsm" style={{ marginBottom: 32 }} onClick={() => { setShowCorrectionModal(true); setCorrectionForm(f => ({...f, date: getTodayStr()})); }}>Request Correction</button>
             </div>
             <div className="card">
               <table>
