@@ -914,9 +914,9 @@ Thank you.`);
     body{background:#f0f4f8;font-family:'Raleway',sans-serif;}
 
     /* -- Topbar -- */
-    .topbar{background:#0a2342;border-bottom:none;padding:0 40px;display:flex;align-items:center;height:68px;position:sticky;top:0;z-index:100;box-shadow:0 2px 12px rgba(10,35,66,.18);}
+    .topbar{background:#0a2342;border-bottom:none;padding:0 40px 0 16px;display:flex;align-items:center;height:68px;position:sticky;top:0;z-index:100;box-shadow:0 2px 12px rgba(10,35,66,.18);}
     .logo{margin-right:auto;display:flex;align-items:center;}
-    .nb{background:none;border:none;color:rgba(255,255,255,.65);font-family:'Raleway',sans-serif;font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;cursor:pointer;padding:0 14px;height:68px;border-bottom:3px solid transparent;transition:all .2s;}
+    .nb{background:none;border:none;color:rgba(255,255,255,.65);font-family:'Raleway',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;padding:0 10px;height:68px;border-bottom:3px solid transparent;transition:all .2s;}
     .nb:hover{color:#ffffff;}
     .nb.active{color:#ffffff;border-bottom-color:#4a9fd4;}
     .uc{font-family:'Raleway',sans-serif;font-size:12px;color:rgba(255,255,255,.7);display:flex;align-items:center;gap:8px;margin-left:12px;font-weight:500;}
@@ -1117,8 +1117,11 @@ Thank you.`);
           )}
         </div>
 
-        <div className="uc"><div className="av">{getInitials(user?.name)}</div>{user?.name.split(" ")[0]}</div>
-        <button className="lb" onClick={() => { localStorage.removeItem("amsl_session"); setSession(null); setCurrentLawyer(null); setLawyers([]); setAttendance([]); setLeaves([]); }}>Sign Out</button>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: 8, flexShrink: 0 }}>
+          <div className="av" title={user?.name}>{getInitials(user?.name)}</div>
+          <button className="lb" style={{ lineHeight: 1.3, padding: "4px 10px", textAlign: "center" }} onClick={() => { localStorage.removeItem("amsl_session"); setSession(null); setCurrentLawyer(null); setLawyers([]); setAttendance([]); setLeaves([]); }}>Sign{"
+"}Out</button>
+        </div>
       </div>
 
       <div className="main">
