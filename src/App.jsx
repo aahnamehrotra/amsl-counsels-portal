@@ -1119,8 +1119,7 @@ Thank you.`);
 
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: 8, flexShrink: 0 }}>
           <div className="av" title={user?.name}>{getInitials(user?.name)}</div>
-          <button className="lb" style={{ lineHeight: 1.3, padding: "4px 10px", textAlign: "center" }} onClick={() => { localStorage.removeItem("amsl_session"); setSession(null); setCurrentLawyer(null); setLawyers([]); setAttendance([]); setLeaves([]); }}>Sign{"
-"}Out</button>
+          <button className="lb" style={{ lineHeight: 1.3, padding: "4px 10px", textAlign: "center", whiteSpace: "normal", maxWidth: 48 }} onClick={() => { localStorage.removeItem("amsl_session"); setSession(null); setCurrentLawyer(null); setLawyers([]); setAttendance([]); setLeaves([]); }}>Sign Out</button>
         </div>
       </div>
 
