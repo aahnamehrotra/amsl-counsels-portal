@@ -470,7 +470,7 @@ function MiniCalendar({ holidays, userLeaves }) {
   function getDayMeta(day) {
     const d = getDateStr(day);
     const isToday = d === today;
-    const isHol = holidays.find(h => h.date === d);
+    const isHol = holidays.find(h => h.date === d); // includes fixed, optional, and firm
     const isLeave = userLeaves.find(l => l.status === "approved" && l.from_date <= d && l.to_date >= d);
     const dow = new Date(calYear, calMonth, day).getDay();
     const isWeekend = dow === 0 || dow === 6;
@@ -549,7 +549,7 @@ export default function App() {
   const [nextSatDate, setNextSatDate] = useState("");
   const [lastSatDate, setLastSatDate] = useState("");
   const [satPromptMode, setSatPromptMode] = useState("upcoming"); // "upcoming" or "past"
-  const [correctionForm, setCorrectionForm] = useState({ type: "attendance", date: "", note: "", currentValue: "" });
+  const [correctionForm, setCorrectionForm] = useState({ type: "attendance", date: "", note: "", correctionField: "sign_out", correctedTime: "" });
   const [showCorrectionModal, setShowCorrectionModal] = useState(false);
   const [corrections, setCorrections] = useState([]);
   const [activeTab, setActiveTab] = useState("apply");
@@ -976,6 +976,7 @@ Thank you.`);
     .bout{background:#f5f5f5;color:#757575;}
     .blv{background:#f3e5f5;color:#6a1b9a;}
     .bho{background:#e3f2fd;color:#0d47a1;}
+    .bfirm{background:#e8f5e9;color:#1b5e20;}
     .bprob{background:#fff3e0;color:#e65100;}
     .bberv{background:#e0f2f1;color:#00695c;}
 
@@ -1081,7 +1082,7 @@ Thank you.`);
             )}
           </button>
           {showNotifications && (
-            <div style={{ position: "absolute", right: 0, top: 48, background: "#fff", border: "1px solid #d0e4f4", borderRadius: 4, width: 320, boxShadow: "0 8px 24px rgba(10,35,66,.15)", zIndex: 200, maxHeight: 400, overflowY: "auto" }}>
+            <div style={{ position: "fixed", right: 20, top: 72, background: "#fff", border: "1px solid #d0e4f4", borderRadius: 4, width: 320, boxShadow: "0 8px 24px rgba(10,35,66,.15)", zIndex: 300, maxHeight: 400, overflowY: "auto" }}>
               <div style={{ padding: "12px 16px", borderBottom: "1px solid #e8f0f8", fontFamily: "Raleway, sans-serif", fontSize: 10, fontWeight: 700, color: "#4a9fd4", letterSpacing: "0.12em", textTransform: "uppercase", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 Notifications
                 {notifications.filter(n => !n.read).length > 0 && (
@@ -1275,7 +1276,7 @@ Thank you.`);
                 <div className="sr" key={h.date}>
                   <div style={{ flex: 1, fontFamily: "DM Mono, monospace", fontSize: 12, color: "#2a2a3a" }}>{h.name}</div>
                   <span style={{ fontFamily: "DM Mono, monospace", fontSize: 11, color: "#7a7a9a", marginRight: 6 }}>{getDayOfWeek(h.date)}, {formatDate(h.date)}</span>
-                  <span className={`badge ${h.type === "fixed" ? "bho" : "blv"}`}>{h.type}</span>
+                  <span className={`badge ${h.type === "fixed" ? "bho" : h.type === "firm" ? "bfirm" : "blv"}`}>{h.type === "firm" ? "Firm" : h.type}</span>
                 </div>
               ))}
             </div>
@@ -2134,11 +2135,11 @@ Thank you.`);
         <div className="modal-overlay">
           <div className="modal">
             <div className="modal-title">Request a Correction</div>
-            <div className="modal-sub">Corrections require Aahna's approval before taking effect.</div>
+            <div className="modal-sub">{isFounder(user) ? "Your corrections are applied immediately." : "Corrections require Aahna's approval before taking effect."}</div>
             <div className="fld">
-              <label className="lbl">Type of Correction</label>
+              <label className="lbl">Type</label>
               <select className="inp" value={correctionForm.type} onChange={e => setCorrectionForm(f => ({ ...f, type: e.target.value }))}>
-                <option value="attendance">Attendance (Sign In/Out)</option>
+                <option value="attendance">Attendance (Sign In / Sign Out)</option>
                 <option value="leave">Leave Record</option>
                 <option value="saturday">Saturday Status</option>
               </select>
@@ -2147,17 +2148,48 @@ Thank you.`);
               <label className="lbl">Date</label>
               <input type="date" className="inp" value={correctionForm.date} onChange={e => setCorrectionForm(f => ({ ...f, date: e.target.value }))} />
             </div>
+            {correctionForm.type === "attendance" && (
+              <>
+                <div className="fld">
+                  <label className="lbl">What needs to be corrected?</label>
+                  <select className="inp" value={correctionForm.correctionField} onChange={e => setCorrectionForm(f => ({ ...f, correctionField: e.target.value }))}>
+                    <option value="sign_in">Sign In Time</option>
+                    <option value="sign_out">Sign Out Time</option>
+                    <option value="both">Both Sign In and Sign Out</option>
+                  </select>
+                </div>
+                {(correctionForm.correctionField === "sign_in" || correctionForm.correctionField === "both") && (
+                  <div className="fld">
+                    <label className="lbl">Correct Sign In Time</label>
+                    <input type="time" className="inp" value={correctionForm.signInTime || ""} onChange={e => setCorrectionForm(f => ({ ...f, signInTime: e.target.value }))} />
+                  </div>
+                )}
+                {(correctionForm.correctionField === "sign_out" || correctionForm.correctionField === "both") && (
+                  <div className="fld">
+                    <label className="lbl">Correct Sign Out Time</label>
+                    <input type="time" className="inp" value={correctionForm.signOutTime || ""} onChange={e => setCorrectionForm(f => ({ ...f, signOutTime: e.target.value }))} />
+                  </div>
+                )}
+              </>
+            )}
+            {correctionForm.type === "saturday" && (
+              <div className="fld">
+                <label className="lbl">Correct Status</label>
+                <select className="inp" value={correctionForm.correctionField} onChange={e => setCorrectionForm(f => ({ ...f, correctionField: e.target.value }))}>
+                  <option value="working">Working</option>
+                  <option value="off">Day Off</option>
+                </select>
+              </div>
+            )}
             <div className="fld">
-              <label className="lbl">What should it be corrected to?</label>
-              <input type="text" className="inp" value={correctionForm.currentValue} onChange={e => setCorrectionForm(f => ({ ...f, currentValue: e.target.value }))} placeholder="e.g. Sign in at 10:00 AM, Sign out at 7:00 PM" />
-            </div>
-            <div className="fld">
-              <label className="lbl">Reason for correction</label>
+              <label className="lbl">Reason</label>
               <textarea className="inp" rows={3} value={correctionForm.note} onChange={e => setCorrectionForm(f => ({ ...f, note: e.target.value }))} placeholder="Brief explanation..." style={{ resize: "vertical" }} />
             </div>
             <div className="modal-btns">
-              <button className="btn bg" style={{ flex: 1 }} onClick={handleCorrectionSubmit}>Submit Request</button>
-              <button className="btn bo" onClick={() => setShowCorrectionModal(false)}>Cancel</button>
+              <button className="btn bg" style={{ flex: 1 }} onClick={handleCorrectionSubmit}>
+                {isFounder(user) ? "Apply Correction" : "Submit Request"}
+              </button>
+              <button className="btn bo" onClick={() => { setShowCorrectionModal(false); setCorrectionForm({ type: "attendance", date: "", note: "", correctionField: "sign_out", correctedTime: "" }); }}>Cancel</button>
             </div>
           </div>
         </div>
