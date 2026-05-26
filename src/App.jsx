@@ -265,6 +265,104 @@ function getLeaveOverlap(fromDate, toDate, leaves, lawyers, excludeLawyerId) {
   }));
 }
 
+// -- Attendance Analytics --
+const WORK_START = "09:30";
+const GRACE_END = "10:00";
+const TYPICAL_HOURS = 10; // 9:30 to 8:00 PM minus 30 min break
+
+function getHoursWorked(signIn, signOut) {
+  if (!signIn || !signOut) return 0;
+  const diff = (new Date(signOut) - new Date(signIn)) / (1000 * 60 * 60);
+  return Math.round(diff * 10) / 10;
+}
+
+function classifyDay(signIn, signOut) {
+  if (!signIn) return "absent";
+  const hours = getHoursWorked(signIn, signOut);
+  if (!signOut) return "in-progress";
+  if (hours < 3.5) return "day-off";
+  if (hours < 5.5) return "half-day";
+  if (hours < 6.0) return "short-day";
+  return "full-day";
+}
+
+function isLateArrival(signIn) {
+  if (!signIn) return false;
+  const t = new Date(signIn);
+  const hours = t.getHours();
+  const mins = t.getMinutes();
+  // Late if after 10:00 AM
+  return hours > 10 || (hours === 10 && mins > 0);
+}
+
+function getSignInTimeStr(signIn) {
+  if (!signIn) return "-";
+  const t = new Date(signIn);
+  return t.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
+}
+
+function isWorkingDay(dateStr) {
+  const d = new Date(dateStr + "T00:00:00");
+  const day = d.getDay();
+  return day !== 0; // Exclude Sundays only; Saturdays tracked separately
+}
+
+function getWorkingDaysBetween(startStr, endStr) {
+  const days = [];
+  const start = new Date(startStr + "T00:00:00");
+  const end = new Date(endStr + "T00:00:00");
+  const cur = new Date(start);
+  while (cur <= end) {
+    const dateStr = `${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,"0")}-${String(cur.getDate()).padStart(2,"0")}`;
+    if (isWorkingDay(dateStr)) days.push(dateStr);
+    cur.setDate(cur.getDate() + 1);
+  }
+  return days;
+}
+
+function getMonthStr(dateStr) {
+  const d = new Date(dateStr + "T00:00:00");
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+}
+
+function getAttendanceSummary(lawyerId, lawyerJoinDate, attendanceList, leavesList, fromDate, toDate) {
+  const records = attendanceList.filter(a => a.lawyer_id === lawyerId && a.date >= fromDate && a.date <= toDate);
+  const workingDays = getWorkingDaysBetween(fromDate, toDate).filter(d => d >= lawyerJoinDate);
+
+  let daysPresent = 0, lateDays = 0, fullDays = 0, halfDays = 0, shortDays = 0, dayOffDue = 0;
+  let totalHours = 0;
+  const unexplained = [];
+  const lateList = [];
+  const shortList = [];
+
+  workingDays.forEach(date => {
+    if (date > toDate) return;
+    const rec = records.find(r => r.date === date);
+    const onLeave = leavesList.find(l => l.lawyer_id === lawyerId && l.status === "approved" && l.from_date <= date && l.to_date >= date);
+    if (onLeave) return; // approved leave - skip
+
+    if (!rec || !rec.sign_in) {
+      unexplained.push(date);
+      return;
+    }
+
+    const classification = classifyDay(rec.sign_in, rec.sign_out);
+    const hours = getHoursWorked(rec.sign_in, rec.sign_out);
+    totalHours += hours;
+
+    if (classification === "full-day") { fullDays++; daysPresent++; }
+    else if (classification === "short-day") { shortDays++; daysPresent++; shortList.push({ date, hours }); }
+    else if (classification === "half-day") { halfDays++; daysPresent++; }
+    else if (classification === "day-off") { dayOffDue++; }
+    else if (classification === "in-progress") { daysPresent++; }
+
+    if (isLateArrival(rec.sign_in)) { lateDays++; lateList.push({ date, time: getSignInTimeStr(rec.sign_in) }); }
+  });
+
+  const avgHours = daysPresent > 0 ? Math.round((totalHours / daysPresent) * 10) / 10 : 0;
+  return { daysPresent, lateDays, fullDays, halfDays, shortDays, dayOffDue, avgHours, totalHours: Math.round(totalHours * 10) / 10, unexplained, lateList, shortList, workingDays: workingDays.length };
+}
+
 // Saturday helpers
 function getNextSaturday(fromDate) {
   const d = new Date(fromDate + "T00:00:00");
@@ -1218,6 +1316,99 @@ Thank you.`);
           </>
         )}
 
+        {/* -- MY ATTENDANCE (in My Info) -- */}
+        {view === "my info" && !isParalegal && (() => {
+          const today = getTodayStr();
+          const currentMonth = today.slice(0, 7);
+          const monthStart = currentMonth + "-01";
+          const daysInMonth = new Date(parseInt(currentMonth.slice(0,4)), parseInt(currentMonth.slice(5,7)), 0).getDate();
+          const monthEnd = currentMonth + "-" + String(daysInMonth).padStart(2,"0");
+          const meta = COUNSEL_META[userEmail];
+          if (!meta) return null;
+          const fromDate = meta.joinDate > monthStart ? meta.joinDate : monthStart;
+          const summary = getAttendanceSummary(user?.id, meta.joinDate, attendance, leaves, fromDate, today < monthEnd ? today : monthEnd);
+          const monthSats = getSaturdaysInMonth(new Date(monthStart + "T00:00:00").getFullYear(), new Date(monthStart + "T00:00:00").getMonth());
+          const satOffs = saturdays.filter(s => s.lawyer_id === user?.id && monthSats.includes(s.date) && s.status === "off").length;
+          return (
+            <div className="card" style={{ marginTop: 16 }}>
+              <div className="ct">My Attendance -- {new Date(monthStart + "T00:00:00").toLocaleString("en-IN", { month: "long", year: "numeric" })}</div>
+              <div style={{ background: "#f5f9ff", border: "1px solid #d0e4f4", borderRadius: 3, padding: "12px 16px", marginBottom: 16 }}>
+                <div style={{ fontFamily: "Raleway, sans-serif", fontSize: 10, color: "#4a9fd4", fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 8 }}>Classification Key</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                  {[
+                    ["Full Day", "5.5+ hours worked", "#2e7d32"],
+                    ["Short Day", "5.5 to 6 hrs -- more than 2/month flagged", "#b7860a"],
+                    ["Half Day", "3.5 to 5.5 hours -- deducted from EL", "#6a1b9a"],
+                    ["Day Off (auto)", "Under 3.5 hours -- treated as absent", "#c62828"],
+                    ["Late Arrival", "Sign-in after 10:00 AM", "#1565c0"],
+                    ["Unexplained", "No record and no approved leave", "#880e4f"],
+                  ].map(([label, desc, color]) => (
+                    <div key={label} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                      <div style={{ width: 8, height: 8, borderRadius: "50%", background: color, flexShrink: 0, marginTop: 3 }} />
+                      <div>
+                        <span style={{ fontFamily: "Raleway, sans-serif", fontSize: 11, fontWeight: 700, color }}>{label}: </span>
+                        <span style={{ fontFamily: "Raleway, sans-serif", fontSize: 11, color: "#4a6070" }}>{desc}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="g4" style={{ marginBottom: 16 }}>
+                {[
+                  ["Days Present", summary.daysPresent, "#0a2342"],
+                  ["Full Days", summary.fullDays, "#2e7d32"],
+                  ["Half Days", summary.halfDays, "#6a1b9a"],
+                  ["Late Arrivals", summary.lateDays, "#1565c0"],
+                  ["Short Days", summary.shortDays, "#b7860a"],
+                  ["Unexplained", summary.unexplained.length, "#c62828"],
+                  ["Avg Hours", summary.avgHours, "#0a2342"],
+                  ["Saturdays Off", satOffs, satOffs > 2 ? "#c62828" : "#0a2342"],
+                ].map(([label, val, color]) => (
+                  <div key={label} className="sc">
+                    <div style={{ fontFamily: "Raleway, sans-serif", fontSize: 22, fontWeight: 700, color }}>{val}</div>
+                    <div className="sl">{label}</div>
+                  </div>
+                ))}
+              </div>
+              {summary.lateList.length > 0 && (
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ fontFamily: "Raleway, sans-serif", fontSize: 10, color: "#1565c0", letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: 700, marginBottom: 6 }}>Late Arrivals</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {summary.lateList.map(l => (
+                      <span key={l.date} style={{ background: "#e3f2fd", border: "1px solid #90caf9", borderRadius: 12, padding: "2px 10px", fontFamily: "Raleway, sans-serif", fontSize: 10, color: "#1565c0" }}>{formatDate(l.date)} -- {l.time}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {summary.shortList.length > 0 && (
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ fontFamily: "Raleway, sans-serif", fontSize: 10, color: "#b7860a", letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: 700, marginBottom: 6 }}>Short Days {summary.shortDays > 2 ? "-- Flagged: More than 2 this month" : ""}</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {summary.shortList.map(s => (
+                      <span key={s.date} style={{ background: "#fff8e1", border: "1px solid #ffe082", borderRadius: 12, padding: "2px 10px", fontFamily: "Raleway, sans-serif", fontSize: 10, color: "#b7860a" }}>{formatDate(s.date)} -- {s.hours}h</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {summary.unexplained.length > 0 && (
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ fontFamily: "Raleway, sans-serif", fontSize: 10, color: "#c62828", letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: 700, marginBottom: 6 }}>Unexplained Absences</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {summary.unexplained.map(d => (
+                      <span key={d} style={{ background: "#ffebee", border: "1px solid #ef9a9a", borderRadius: 12, padding: "2px 10px", fontFamily: "Raleway, sans-serif", fontSize: 10, color: "#c62828" }}>{getDayOfWeek(d)}, {formatDate(d)}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {satOffs > 2 && (
+                <div className="alert alert-warn" style={{ marginTop: 12 }}>
+                  You have taken {satOffs} Saturday offs this month -- exceeding the 2-day allowance. Additional offs require Aahna's approval.
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
         {/* -- LEAVES -- */}
         {view === "leaves" && (
           <>
@@ -1473,59 +1664,129 @@ Thank you.`);
         )}
 
         {/* -- REPORTS -- */}
-        {view === "reports" && user?.is_admin && (
+                {view === "reports" && isFounder(user) && (
           <>
             <div className="pt">Reports</div>
-            <div className="ps">Year-to-date summary</div>
+            <div className="ps">Attendance analytics and leave summary</div>
+
+            {/* Key / Legend */}
             <div className="card">
-              <div className="ct">Counsel Status & Leave Balances</div>
-              <table>
-                <thead><tr><th>Counsel</th><th>Status</th><th>Present</th><th>EL Left</th><th>CL/SL Left</th><th>BL Used</th><th>Pending</th></tr></thead>
-                <tbody>
-                  {lawyers.filter(l => l.email?.toLowerCase() !== PARALEGAL_EMAIL).map(l => {
-                    const lEmail = l.email?.toLowerCase();
-                    const elB = getBalance(l.id, lEmail, leaves, "Earned Leave");
-                    const slB = getBalance(l.id, lEmail, leaves, "Casual/Sick Leave");
-                    const blUsed = leaves.filter(lv => lv.lawyer_id === l.id && lv.type.includes("Bereavement") && lv.status === "approved").reduce((s, lv) => s + (lv.days || 0), 0);
-                    const pend = leaves.filter(lv => lv.lawyer_id === l.id && lv.status === "pending").length;
-                    const lMeta = COUNSEL_META[lEmail];
-                    const status = isOnMaternity(lEmail) ? "Maternity" : isInProbation(lEmail) ? "Probation" : lMeta?.activeFrom && today < lMeta.activeFrom ? "Pending" : "Active";
-                    return (
-                      <tr key={l.id}>
-                        <td>{l.name}</td>
-                        <td><span className={`badge ${status === "Active" ? "ba" : status === "Maternity" ? "blv" : "bprob"}`}>{status}</span></td>
-                        <td>{attendance.filter(a => a.lawyer_id === l.id).length}</td>
-                        <td><span className="badge ba">{elB?.remaining ?? 0}</span></td>
-                        <td><span className={`badge ${slB?.remaining <= 2 ? "brej" : "ba"}`}>{slB?.remaining ?? 0}</span></td>
-                        <td>{blUsed > 0 ? <span className="badge bberv">{blUsed}d</span> : "-"}</td>
-                        <td>{pend > 0 ? <span className="badge bp">{pend}</span> : "-"}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+              <div className="ct">Key -- What Each Classification Means</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                {[
+                  ["Full Day", "5.5+ hours worked", "#e8f5e9", "#2e7d32"],
+                  ["Short Day", "5.5 to 6 hours worked. More than 2 in a month triggers a flag.", "#fff8e1", "#b7860a"],
+                  ["Half Day", "3.5 to 5.5 hours worked. Deducted from EL.", "#f3e5f5", "#6a1b9a"],
+                  ["Day Off (auto)", "Under 3.5 hours logged. Treated as absent.", "#ffebee", "#c62828"],
+                  ["Late Arrival", "Sign-in after 10:00 AM (grace period ends at 10:00 AM).", "#e3f2fd", "#1565c0"],
+                  ["Unexplained Absence", "No attendance record and no approved leave. Requires explanation.", "#fce4ec", "#880e4f"],
+                  ["In Progress", "Signed in but not yet signed out for the day.", "#f0f4f8", "#4a7090"],
+                  ["Saturday Flag", "More than 2 Saturday offs in a month. Requires Aahna's review.", "#fff3e0", "#e65100"],
+                ].map(([label, desc, bg, color]) => (
+                  <div key={label} style={{ background: bg, border: `1px solid ${color}33`, borderRadius: 3, padding: "10px 14px" }}>
+                    <div style={{ fontFamily: "Raleway, sans-serif", fontSize: 11, fontWeight: 700, color, marginBottom: 3 }}>{label}</div>
+                    <div style={{ fontFamily: "Raleway, sans-serif", fontSize: 11, color: "#4a6070", lineHeight: 1.6 }}>{desc}</div>
+                  </div>
+                ))}
+              </div>
             </div>
-            <div className="card">
-              <div className="ct">Full Leave Log</div>
-              <table>
-                <thead><tr><th>Counsel</th><th>Type</th><th>From</th><th>To</th><th>Days</th><th>Status</th></tr></thead>
-                <tbody>
-                  {[...leaves].sort((a, b) => (b.applied_on || "").localeCompare(a.applied_on || "")).map(l => (
-                    <tr key={l.id}>
-                      <td>{lawyers.find(lw => lw.id === l.lawyer_id)?.name || "-"}</td>
-                      <td style={{ maxWidth: 140 }}>{l.type}</td>
-                      <td>{formatDate(l.from_date)}</td><td>{formatDate(l.to_date)}</td><td>{l.days}</td>
-                      <td><span className={`badge ${l.status === "approved" ? "ba" : l.status === "rejected" ? "brej" : "bp"}`}>{l.status}</span></td>
-                    </tr>
-                  ))}
-                  {leaves.length === 0 && <tr><td colSpan={6} style={{ color: "#aaaacc", textAlign: "center", paddingTop: 20 }}>No records yet.</td></tr>}
-                </tbody>
-              </table>
-            </div>
+
+            {/* Per-counsel attendance summary */}
+            {(() => {
+              const today = getTodayStr();
+              const currentMonth = today.slice(0, 7);
+              const monthStart = currentMonth + "-01";
+              const daysInMonth = new Date(parseInt(currentMonth.slice(0,4)), parseInt(currentMonth.slice(5,7)), 0).getDate();
+              const monthEnd = currentMonth + "-" + String(daysInMonth).padStart(2,"0");
+
+              return lawyers.filter(l => !isOnMaternity(l.email?.toLowerCase())).map(l => {
+                const meta = COUNSEL_META[l.email?.toLowerCase()];
+                if (!meta) return null;
+                const fromDate = meta.joinDate > monthStart ? meta.joinDate : monthStart;
+                const summary = getAttendanceSummary(l.id, meta.joinDate, attendance, leaves, fromDate, monthEnd < today ? monthEnd : today);
+                const monthSats = getSaturdaysInMonth(new Date(monthStart + "T00:00:00").getFullYear(), new Date(monthStart + "T00:00:00").getMonth());
+                const satOffs = saturdays.filter(s => s.lawyer_id === l.id && monthSats.includes(s.date) && s.status === "off").length;
+                const satFlag = satOffs > 2;
+                const shortDayFlag = summary.shortDays > 2;
+
+                return (
+                  <div className="card" key={l.id}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+                      <div className="sav">{getInitials(l.name)}</div>
+                      <div>
+                        <div style={{ fontFamily: "Raleway, sans-serif", fontSize: 14, fontWeight: 700, color: "#0a2342" }}>{l.name}</div>
+                        <div style={{ fontFamily: "Raleway, sans-serif", fontSize: 10, color: "#7a94aa", letterSpacing: "0.1em", textTransform: "uppercase" }}>
+                          {new Date(monthStart + "T00:00:00").toLocaleString("en-IN", { month: "long", year: "numeric" })}
+                        </div>
+                      </div>
+                      {satFlag && <span className="badge bprob" style={{ marginLeft: "auto" }}>Saturday Flag</span>}
+                      {shortDayFlag && <span className="badge bp" style={{ marginLeft: satFlag ? 4 : "auto" }}>Short Day Flag</span>}
+                    </div>
+
+                    <div className="g4" style={{ marginBottom: 16 }}>
+                      {[
+                        ["Days Present", summary.daysPresent, "#0a2342"],
+                        ["Full Days", summary.fullDays, "#2e7d32"],
+                        ["Half Days", summary.halfDays, "#6a1b9a"],
+                        ["Late Arrivals", summary.lateDays, "#1565c0"],
+                        ["Short Days", summary.shortDays, "#b7860a"],
+                        ["Unexplained", summary.unexplained.length, "#c62828"],
+                        ["Avg Hours/Day", summary.avgHours, "#0a2342"],
+                        ["Total Hours", summary.totalHours, "#0a2342"],
+                      ].map(([label, val, color]) => (
+                        <div key={label} className="sc">
+                          <div style={{ fontFamily: "Raleway, sans-serif", fontSize: 20, fontWeight: 700, color }}>{val}</div>
+                          <div className="sl">{label}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {summary.lateList.length > 0 && (
+                      <div style={{ marginBottom: 12 }}>
+                        <div style={{ fontFamily: "Raleway, sans-serif", fontSize: 10, color: "#1565c0", letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: 700, marginBottom: 6 }}>Late Arrivals</div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                          {summary.lateList.map(l => (
+                            <span key={l.date} style={{ background: "#e3f2fd", border: "1px solid #90caf9", borderRadius: 12, padding: "2px 10px", fontFamily: "Raleway, sans-serif", fontSize: 10, color: "#1565c0" }}>
+                              {formatDate(l.date)} -- {l.time}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {summary.shortList.length > 0 && (
+                      <div style={{ marginBottom: 12 }}>
+                        <div style={{ fontFamily: "Raleway, sans-serif", fontSize: 10, color: "#b7860a", letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: 700, marginBottom: 6 }}>Short Days {shortDayFlag ? "-- FLAG: More than 2 this month" : ""}</div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                          {summary.shortList.map(s => (
+                            <span key={s.date} style={{ background: "#fff8e1", border: "1px solid #ffe082", borderRadius: 12, padding: "2px 10px", fontFamily: "Raleway, sans-serif", fontSize: 10, color: "#b7860a" }}>
+                              {formatDate(s.date)} -- {s.hours}h
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {summary.unexplained.length > 0 && (
+                      <div>
+                        <div style={{ fontFamily: "Raleway, sans-serif", fontSize: 10, color: "#c62828", letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: 700, marginBottom: 6 }}>Unexplained Absences</div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                          {summary.unexplained.map(d => (
+                            <span key={d} style={{ background: "#ffebee", border: "1px solid #ef9a9a", borderRadius: 12, padding: "2px 10px", fontFamily: "Raleway, sans-serif", fontSize: 10, color: "#c62828" }}>
+                              {getDayOfWeek(d)}, {formatDate(d)}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              });
+            })()}
           </>
         )}
 
-        {/* -- HOLIDAYS -- */}
+
         {view === "holidays" && user?.is_admin && (
           <>
             <div className="pt">Holiday Calendar</div>
