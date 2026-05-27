@@ -573,6 +573,7 @@ export default function App() {
   const [showForgotSignout, setShowForgotSignout] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [expandedLogs, setExpandedLogs] = useState({});
   const [missedSignoutDate, setMissedSignoutDate] = useState("");
 
   const today = getTodayStr();
@@ -1922,8 +1923,13 @@ Thank you.`);
                     )}
                     {/* Daily Log */}
                     <div style={{ marginTop: 14 }}>
-                      <div style={{ fontFamily: "Raleway, sans-serif", fontSize: 10, color: "#4a9fd4", letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: 700, marginBottom: 8 }}>Daily Log -- {new Date(monthStart + "T00:00:00").toLocaleString("en-IN", { month: "long", year: "numeric" })}</div>
-                      <table>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                        <div style={{ fontFamily: "Raleway, sans-serif", fontSize: 10, color: "#4a9fd4", letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: 700 }}>Daily Log -- {new Date(monthStart + "T00:00:00").toLocaleString("en-IN", { month: "long", year: "numeric" })}</div>
+                        <button onClick={() => setExpandedLogs(prev => ({ ...prev, [l.id]: !prev[l.id] }))} style={{ background: "none", border: "1px solid #d0e4f4", borderRadius: 3, padding: "3px 10px", fontFamily: "Raleway, sans-serif", fontSize: 10, color: "#4a9fd4", cursor: "pointer", fontWeight: 600 }}>
+                          {expandedLogs[l.id] ? "Hide" : "Show Log"}
+                        </button>
+                      </div>
+                      {expandedLogs[l.id] && <table>
                         <thead><tr><th>Date</th><th>Day</th><th>Sign In</th><th>Sign Out</th><th>Hours</th><th>Status</th></tr></thead>
                         <tbody>
                           {summary.workingDays > 0 && getWorkingDaysBetween(fromDate, monthEnd < today ? monthEnd : today).map(date => {
@@ -1945,7 +1951,7 @@ Thank you.`);
                             );
                           })}
                         </tbody>
-                      </table>
+                      </table>}
                     </div>
                     {(() => {
                       const monthCorr = corrections.filter(c => c.lawyer_id === l.id && c.requested_on >= monthStart && c.requested_on <= (monthEnd < today ? monthEnd : today));
