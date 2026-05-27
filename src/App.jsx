@@ -1920,6 +1920,33 @@ Thank you.`);
                         </div>
                       </div>
                     )}
+                    {/* Daily Log */}
+                    <div style={{ marginTop: 14 }}>
+                      <div style={{ fontFamily: "Raleway, sans-serif", fontSize: 10, color: "#4a9fd4", letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: 700, marginBottom: 8 }}>Daily Log -- {new Date(monthStart + "T00:00:00").toLocaleString("en-IN", { month: "long", year: "numeric" })}</div>
+                      <table>
+                        <thead><tr><th>Date</th><th>Day</th><th>Sign In</th><th>Sign Out</th><th>Hours</th><th>Status</th></tr></thead>
+                        <tbody>
+                          {summary.workingDays > 0 && getWorkingDaysBetween(fromDate, monthEnd < today ? monthEnd : today).map(date => {
+                            const rec = attendance.find(a => a.lawyer_id === l.id && a.date === date);
+                            const onLeave = leaves.find(lv => lv.lawyer_id === l.id && lv.status === "approved" && lv.from_date <= date && lv.to_date >= date);
+                            const classification = rec ? classifyDay(rec.sign_in, rec.sign_out) : onLeave ? "leave" : "absent";
+                            const hours = rec ? getHoursWorked(rec.sign_in, rec.sign_out) : 0;
+                            const late = rec && isLateArrival(rec.sign_in);
+                            const bgColor = classification === "full-day" ? "#f1f8e9" : classification === "half-day" ? "#f3e5f5" : classification === "short-day" ? "#fff8e1" : classification === "leave" ? "#e3f2fd" : classification === "absent" ? "#ffebee" : "#fff";
+                            return (
+                              <tr key={date} style={{ background: bgColor }}>
+                                <td>{formatDate(date)}</td>
+                                <td>{getDayOfWeek(date)}</td>
+                                <td style={{ color: late ? "#c62828" : "inherit" }}>{rec?.sign_in ? formatTime(rec.sign_in) + (late ? " (late)" : "") : "-"}</td>
+                                <td>{rec?.sign_out ? formatTime(rec.sign_out) : "-"}</td>
+                                <td>{hours > 0 ? hours + "h" : "-"}</td>
+                                <td><span className={`badge ${classification === "full-day" ? "ba" : classification === "half-day" ? "blv" : classification === "short-day" ? "bp" : classification === "leave" ? "bho" : classification === "in-progress" ? "bin" : "brej"}`}>{classification === "in-progress" ? "In Progress" : classification === "day-off" ? "Day Off" : classification}</span></td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
                     {(() => {
                       const monthCorr = corrections.filter(c => c.lawyer_id === l.id && c.requested_on >= monthStart && c.requested_on <= (monthEnd < today ? monthEnd : today));
                       if (monthCorr.length === 0) return null;
