@@ -625,7 +625,7 @@ export default function App() {
 
     // Load interns and intern attendance
     const [iv, ia, nv] = await Promise.all([db.get("Interns"), db.get("InternAttendance"), db.get("Notifications")]);
-    setNotifications(Array.isArray(nv) ? nv.filter(n => n.lawyer_id === (lawyersList.find(lw => lw.email?.toLowerCase() === email)?.id)) : []);
+    setNotifications(Array.isArray(nv) ? nv.filter(n => String(n.lawyer_id) === String(lawyersList.find(lw => lw.email?.toLowerCase() === email)?.id)) : []);
     setInterns(Array.isArray(iv) ? iv : []);
     setInternAttendance(Array.isArray(ia) ? ia : []);
 
