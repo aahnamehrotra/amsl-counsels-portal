@@ -2003,7 +2003,7 @@ Thank you.`);
               <div className="g3">
                 <div className="fld"><label className="lbl">Date</label><input type="date" className="inp" value={holidayForm.date} onChange={e => setHolidayForm(f => ({ ...f, date: e.target.value }))} /></div>
                 <div className="fld"><label className="lbl">Name</label><input type="text" className="inp" value={holidayForm.name} onChange={e => setHolidayForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Diwali" /></div>
-                <div className="fld"><label className="lbl">Type</label><select className="inp" value={holidayForm.type} onChange={e => setHolidayForm(f => ({ ...f, type: e.target.value }))}><option value="fixed">Fixed (Compulsory)</option><option value="optional">Optional (counts as EL)</option></select></div>
+                <div className="fld"><label className="lbl">Type</label><select className="inp" value={holidayForm.type} onChange={e => setHolidayForm(f => ({ ...f, type: e.target.value }))}><option value="fixed">Fixed (Compulsory)</option><option value="optional">Optional (counts as EL)</option><option value="firm">Firm Holiday (Paid - Office Closed)</option></select></div>
               </div>
               <button className="btn bg" onClick={async () => {
   if (!holidayForm.date || !holidayForm.name) return;
@@ -2016,9 +2016,9 @@ Thank you.`);
   notify("Holiday added");
 }}>Add Holiday</button>
             </div>
-            {["fixed", "optional"].map(type => (
+            {["fixed", "optional", "firm"].map(type => (
               <div className="card" key={type}>
-                <div className="ct">{type === "fixed" ? "Fixed Holidays" : "Optional Holidays"}</div>
+                <div className="ct">{type === "fixed" ? "Fixed Holidays" : type === "firm" ? "Firm Holidays" : "Optional Holidays"}</div>
                 {holidays.filter(h => h.type === type).sort((a, b) => a.date.localeCompare(b.date)).map(h => (
                   <div className="sr" key={h.date}>
                     <span className={`badge ${type === "fixed" ? "bho" : "blv"}`}>{type}</span>
