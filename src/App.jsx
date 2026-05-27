@@ -749,7 +749,16 @@ export default function App() {
     if (Array.isArray(result) && result[0]) {
       setLeaves(p => [...p, result[0]]);
       setLeaveForm({ type: "Casual/Sick Leave", from: "", to: "", reason: "", isPostFacto: false });
-      notify("Leave application submitted ");
+      notify("Leave application submitted");
+      // Notify approvers
+      const _lvAahna = lawyers.find(l => l.email?.toLowerCase() === "aahna.mehrotra@amsportslaw.com");
+      const _lvRiya = lawyers.find(l => l.email?.toLowerCase() === "riyarajkumar.sharma@amsportslaw.com");
+      const _lvMsg = user.name + " has applied for " + effectiveType + " from " + formatDate(leaveForm.from) + (to !== leaveForm.from ? " to " + formatDate(to) : "") + " (" + days + " day" + (days > 1 ? "s" : "") + ").";
+      const _lvRecipients = [
+        _lvAahna?.id !== user.id ? _lvAahna : null,
+        isJuniorCounsel(userEmail) && _lvRiya?.id !== user.id ? _lvRiya : null
+      ].filter(Boolean);
+      await Promise.all(_lvRecipients.map(l => db.insert("Notifications", { lawyer_id: l.id, message: _lvMsg, type: "leave_submitted", read: false })));
     }
   }
 
@@ -817,15 +826,12 @@ export default function App() {
         setShowCorrectionModal(false);
         setCorrectionForm(resetForm);
         notify("Correction request submitted - awaiting Aahna's approval");
-        // Notify Aahna
-        const aahna = lawyers.find(l => l.email?.toLowerCase() === "aahna.mehrotra@amsportslaw.com");
-        if (aahna) {
-          await db.insert("Notifications", {
-            lawyer_id: aahna.id,
-            message: user.name + " has requested a " + correctionForm.type + " correction for " + formatDate(correctionForm.date) + ": " + currentValue + ".",
-            type: "correction_submitted", read: false
-          });
-        }
+        // Notify Aahna always, Riya if junior counsel
+        const _aahna = lawyers.find(l => l.email?.toLowerCase() === "aahna.mehrotra@amsportslaw.com");
+        const _riya = lawyers.find(l => l.email?.toLowerCase() === "riyarajkumar.sharma@amsportslaw.com");
+        const _corrMsg = user.name + " has requested a " + correctionForm.type + " correction for " + formatDate(correctionForm.date) + ": " + currentValue + ".";
+        const _corrRecipients = [_aahna, ...(isJuniorCounsel(userEmail) ? [_riya] : [])].filter(Boolean);
+        await Promise.all(_corrRecipients.map(l => db.insert("Notifications", { lawyer_id: l.id, message: _corrMsg, type: "correction_submitted", read: false })));
       }
     }
   }
@@ -858,7 +864,7 @@ export default function App() {
           if (attRec) { const r=await db.update("Attendance",attRec.id,updates); if(Array.isArray(r)&&r[0]) setAttendance(p=>p.map(a=>a.id===attRec.id?r[0]:a)); }
           else { const r=await db.insert("Attendance",{lawyer_id:correction.lawyer_id,date:correction.date,...updates}); if(Array.isArray(r)&&r[0]) setAttendance(p=>[...p,r[0]]); }
         }
-        await db.insert("Notifications",{lawyer_id:correction.lawyer_id,message:"Your correction for "+formatDate(correction.date)+" has been approved.",type:"correction_approved",read:false});
+        await db.insert("Notifications",{lawyer_id:correction.lawyer_id,message:"Your correction for "+formatDate(correction.date)+" has been approved by "+user.name+".",type:"correction_approved",read:false});
       } else if (action === "rejected" && correction) {
         await db.insert("Notifications",{lawyer_id:correction.lawyer_id,message:"Your correction for "+formatDate(correction.date)+" was not approved.",type:"correction_rejected",read:false});
       }
