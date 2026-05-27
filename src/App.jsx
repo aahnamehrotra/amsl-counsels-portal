@@ -817,6 +817,15 @@ export default function App() {
         setShowCorrectionModal(false);
         setCorrectionForm(resetForm);
         notify("Correction request submitted - awaiting Aahna's approval");
+        // Notify Aahna
+        const aahna = lawyers.find(l => l.email?.toLowerCase() === "aahna.mehrotra@amsportslaw.com");
+        if (aahna) {
+          await db.insert("Notifications", {
+            lawyer_id: aahna.id,
+            message: user.name + " has requested a " + correctionForm.type + " correction for " + formatDate(correctionForm.date) + ": " + currentValue + ".",
+            type: "correction_submitted", read: false
+          });
+        }
       }
     }
   }
@@ -1990,7 +1999,16 @@ Thank you.`);
                 <div className="fld"><label className="lbl">Name</label><input type="text" className="inp" value={holidayForm.name} onChange={e => setHolidayForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Diwali" /></div>
                 <div className="fld"><label className="lbl">Type</label><select className="inp" value={holidayForm.type} onChange={e => setHolidayForm(f => ({ ...f, type: e.target.value }))}><option value="fixed">Fixed (Compulsory)</option><option value="optional">Optional (counts as EL)</option></select></div>
               </div>
-              <button className="btn bg" onClick={() => { if (!holidayForm.date || !holidayForm.name) return; setHolidays(p => [...p, { ...holidayForm }]); setHolidayForm({ date: "", name: "", type: "fixed" }); notify("Holiday added "); }}>Add Holiday</button>
+              <button className="btn bg" onClick={async () => {
+  if (!holidayForm.date || !holidayForm.name) return;
+  setHolidays(p => [...p, { ...holidayForm }]);
+  if (holidayForm.type === "firm") {
+    const msg = "Firm Holiday: " + holidayForm.name + " on " + getDayOfWeek(holidayForm.date) + ", " + formatDate(holidayForm.date) + ". Office will be closed.";
+    await Promise.all(lawyers.map(l => db.insert("Notifications", { lawyer_id: l.id, message: msg, type: "firm_holiday", read: false })));
+  }
+  setHolidayForm({ date: "", name: "", type: "fixed" });
+  notify("Holiday added");
+}}>Add Holiday</button>
             </div>
             {["fixed", "optional"].map(type => (
               <div className="card" key={type}>
