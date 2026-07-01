@@ -331,12 +331,16 @@ function getWorkingDaysBetween(startStr, endStr) {
   return days;
 }
 
+function isSaturdayOff(dateStr, saturdaysData, lawyerId) {
+  return saturdaysData.some(s => s.lawyer_id === lawyerId && s.date === dateStr && s.status === "off");
+}
+
 function getMonthStr(dateStr) {
   const d = new Date(dateStr + "T00:00:00");
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
 }
 
-function getAttendanceSummary(lawyerId, lawyerJoinDate, attendanceList, leavesList, fromDate, toDate) {
+function getAttendanceSummary(lawyerId, lawyerJoinDate, attendanceList, leavesList, fromDate, toDate, saturdaysData = []) {
   const records = attendanceList.filter(a => a.lawyer_id === lawyerId && a.date >= fromDate && a.date <= toDate);
   const workingDays = getWorkingDaysBetween(fromDate, toDate).filter(d => d >= lawyerJoinDate);
 
@@ -353,6 +357,10 @@ function getAttendanceSummary(lawyerId, lawyerJoinDate, attendanceList, leavesLi
     if (onLeave) return; // approved leave - skip
 
     if (!rec || !rec.sign_in) {
+      // Skip Saturdays marked as off in Saturday tracker
+      if (isSaturdayOff(date, saturdaysData, lawyerId)) return;
+      // Skip Sundays
+      if (new Date(date + 'T00:00:00').getDay() === 0) return;
       unexplained.push(date);
       return;
     }
@@ -707,7 +715,7 @@ export default function App() {
     const to = form.to || form.from;
     const lt = LEAVE_TYPES.find(l => l.value === form.type);
     if (!lt) return "Invalid leave type.";
-    if (inProbation && !lt.probationAllowed) return "This leave type is not available during probation. Any absence will be recorded as LWP.";
+    // During probation, allow application but it will be converted to LWP at submission
     if (onMaternity && form.type !== "Bereavement Leave (Immediate Family)" && form.type !== "Bereavement Leave (Extended Family/Friend)") return "You are currently on maternity leave.";
     if (!form.isPostFacto) {
       const fromH = isHoliday(form.from);
@@ -782,6 +790,14 @@ export default function App() {
       setSaturdays(prev => [...prev, result[0]]);
       if (countsAsEl) notify("Note: You have used your 2 Saturday offs this month. This Saturday will count as Earned Leave.", "error");
       else notify(status === "working" ? "Saturday marked as working" : "Saturday off recorded");
+      // If marking as off, notify Aahna
+      if (status === "off" && !isFounder(user)) {
+        const aahna = lawyers.find(l => l.email?.toLowerCase() === "aahna.mehrotra@amsportslaw.com");
+        if (aahna) {
+          const msg = user.name + " has marked " + getDayOfWeek(targetDate) + ", " + formatDate(targetDate) + " as a Saturday off" + (countsAsEl ? " (counts as EL -- 3rd off this month)" : "") + ".";
+          await db.insert("Notifications", { lawyer_id: aahna.id, message: msg, type: "saturday_off", read: false });
+        }
+      }
     }
     setSatPromptMode("upcoming");
   }
