@@ -576,6 +576,9 @@ export default function App() {
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [expandedLogs, setExpandedLogs] = useState({});
+  const [showOffboardModal, setShowOffboardModal] = useState(false);
+  const [offboardTarget, setOffboardTarget] = useState(null);
+  const [offboardForm, setOffboardForm] = useState({ exit_date: "", exit_reason: "termination", exit_remarks: "" });
   const [selectedReportMonth, setSelectedReportMonth] = useState(getTodayStr().slice(0, 7));
   const [missedSignoutDate, setMissedSignoutDate] = useState("");
 
@@ -848,6 +851,23 @@ export default function App() {
     if (!isFounder(user)) {
       const aahna = lawyers.find(l => l.email?.toLowerCase() === "aahna.mehrotra@amsportslaw.com");
       if (aahna) await db.insert("Notifications", { lawyer_id: aahna.id, message: user.name + " deleted their attendance record for " + formatDate(dateStr) + ".", type: "attendance_deleted", read: false });
+    }
+  }
+
+  async function handleOffboard() {
+    if (!offboardTarget || !offboardForm.exit_date) return;
+    const result = await db.update("Lawyers", offboardTarget.id, {
+      active: false,
+      exit_date: offboardForm.exit_date,
+      exit_reason: offboardForm.exit_reason,
+      exit_remarks: offboardForm.exit_remarks
+    });
+    if (Array.isArray(result) && result[0]) {
+      setLawyers(prev => prev.map(l => l.id === offboardTarget.id ? result[0] : l));
+      setShowOffboardModal(false);
+      setOffboardTarget(null);
+      setOffboardForm({ exit_date: "", exit_reason: "termination", exit_remarks: "" });
+      notify(offboardTarget.name + " has been offboarded.");
     }
   }
 
@@ -1318,7 +1338,7 @@ Thank you.`);
 
             <div className="card">
               <div className="ct">Office Today</div>
-              {lawyers.filter(l => l.email?.toLowerCase() !== PARALEGAL_EMAIL).map(l => {
+              {lawyers.filter(l => l.email?.toLowerCase() !== PARALEGAL_EMAIL && l.active !== false).map(l => {
                 const lEmail = l.email?.toLowerCase();
                 const lMeta = COUNSEL_META[lEmail];
                 const att = attendance.find(a => a.lawyer_id === l.id && a.date === today);
@@ -2402,6 +2422,37 @@ Thank you.`);
                 setShowForgotSignout(false);
               }}>Record Sign Out</button>
               <button className="btn bo" onClick={() => setShowForgotSignout(false)}>Dismiss</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Offboard Modal */}
+      {showOffboardModal && offboardTarget && (
+        <div className="modal-overlay">
+          <div className="modal">
+            <div className="modal-title">Offboard {offboardTarget.name}</div>
+            <div className="modal-sub">This will mark {offboardTarget.name.split(" ")[0]} as inactive and record their exit from the firm. Historical data will be preserved.</div>
+            <div className="fld">
+              <label className="lbl">Exit Date</label>
+              <input type="date" className="inp" value={offboardForm.exit_date} onChange={e => setOffboardForm(f => ({ ...f, exit_date: e.target.value }))} />
+            </div>
+            <div className="fld">
+              <label className="lbl">Reason</label>
+              <select className="inp" value={offboardForm.exit_reason} onChange={e => setOffboardForm(f => ({ ...f, exit_reason: e.target.value }))}>
+                <option value="termination">Termination</option>
+                <option value="resignation">Resignation</option>
+                <option value="end_of_contract">End of Contract</option>
+                <option value="probation_failure">Probation Failure</option>
+              </select>
+            </div>
+            <div className="fld">
+              <label className="lbl">Remarks (will appear in report)</label>
+              <textarea className="inp" rows={4} value={offboardForm.exit_remarks} onChange={e => setOffboardForm(f => ({ ...f, exit_remarks: e.target.value }))} placeholder="Add any remarks to be recorded in the exit report..." style={{ resize: "vertical" }}></textarea>
+            </div>
+            <div className="modal-btns">
+              <button className="btn bg" style={{ flex: 1 }} onClick={handleOffboard}>Confirm Offboarding</button>
+              <button className="btn bo" onClick={() => setShowOffboardModal(false)}>Cancel</button>
             </div>
           </div>
         </div>
