@@ -970,9 +970,9 @@ export default function App() {
         new Paragraph({ spacing: { before: 160, after: 80 }, border: { bottom: { style: BorderStyle.SINGLE, size: 2, color: "0a2342" } }, children: [new TextRun({ text: "Attendance Summary", font: FONT, size: SZ, bold: true, color: "0a2342" })] }),
         new Paragraph({ spacing: { before: 80, after: 80 }, children: [] }),
         new Table({ width: { size: 9360, type: WidthType.DXA }, rows: [
-          new TableRow({ children: [cell("Total Working Days (period of employment)", { w: 6000, shade: true, bold: true }), cell(String(workDays.length), { w: 3360 })] }),
-          new TableRow({ children: [cell("Days Present (recorded attendance)", { w: 6000, shade: true, bold: true }), cell(String(daysPresent), { w: 3360 })] }),
-          new TableRow({ children: [cell("Approved Leaves", { w: 6000, shade: true, bold: true }), cell(lawLeaves.filter(l => l.status === "approved" && l.type !== "Leave Without Pay").length > 0 ? lawLeaves.filter(l => l.status === "approved").map(l => l.type + " (" + l.days + "d)").join(", ") : "None", { w: 3360 })] }),
+          new TableRow({ children: [cell("Calendar Days in Month of Exit", { w: 6000, shade: true, bold: true }), cell(String(calendarDaysInMonth), { w: 3360 })] }),
+          new TableRow({ children: [cell("Days Worked (1st to day before termination)", { w: 6000, shade: true, bold: true }), cell(String(workedCalendarDays) + " calendar days (1 " + new Date(exitDate.slice(0,7) + "-01T00:00:00").toLocaleString("en-IN", { month: "long" }) + " to " + formatDate(new Date(new Date(exitDate + "T00:00:00").setDate(new Date(exitDate + "T00:00:00").getDate()-1)).toISOString().split("T")[0]) + ")", { w: 3360 })] }),
+          new TableRow({ children: [cell("Days Present (recorded sign-in)", { w: 6000, shade: true, bold: true }), cell(String(daysPresent), { w: 3360 })] }),
           new TableRow({ children: [cell("Leave Without Pay Days", { w: 6000, shade: true, bold: true }), cell(String(lwpDays), { w: 3360 })] }),
           new TableRow({ children: [cell("Late Arrivals", { w: 6000, shade: true, bold: true }), cell(String(attRows.filter(r => r[2].includes("late")).length), { w: 3360 })] }),
           new TableRow({ children: [cell("Unexplained Absences", { w: 6000, shade: true, bold: true }), cell(String(attRows.filter(r => r[5] === "No Record").length), { w: 3360 })] }),
