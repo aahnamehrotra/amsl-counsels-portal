@@ -902,15 +902,15 @@ export default function App() {
     const SP = { before: 0, after: 0, line: 276, lineRule: "auto" };
 
     const workDays = getWorkingDaysBetween(joinDate, exitDate);
-    const monthStart = exitDate.slice(0,7) + "-01";
-    const lastDayOfMonth = new Date(new Date(exitDate.slice(0,7) + "-01T00:00:00").getFullYear(), new Date(exitDate.slice(0,7) + "-01T00:00:00").getMonth()+1, 0);
-    const lastDayStr = lastDayOfMonth.getFullYear() + "-" + String(lastDayOfMonth.getMonth()+1).padStart(2,"0") + "-" + String(lastDayOfMonth.getDate()).padStart(2,"0");
-    const totalWorkDaysInExitMonth = getWorkingDaysBetween(monthStart, lastDayStr).length;
-    const workDaysInExitMonth = getWorkingDaysBetween(monthStart, exitDate).length;
-    const proRatedSalary = salary > 0 ? Math.round((salary / totalWorkDaysInExitMonth) * workDaysInExitMonth) : 0;
-    const lwpLeaves = lawLeaves.filter(l => l.type === "Leave Without Pay" && l.status === "approved");
-    const lwpDays = lwpLeaves.reduce((sum, l) => sum + (l.days || 0), 0);
-    const lwpDeduction = salary > 0 && lwpDays > 0 ? Math.round((salary / totalWorkDaysInExitMonth) * lwpDays) : 0;
+    const exitDateObj = new Date(exitDate + "T00:00:00");
+    const calendarDaysInMonth = new Date(exitDateObj.getFullYear(), exitDateObj.getMonth()+1, 0).getDate();
+    // Worked until day before termination
+    const workedCalendarDays = exitDateObj.getDate() - 1;
+    const proRatedSalary = salary > 0 ? Math.round((salary / calendarDaysInMonth) * workedCalendarDays) : 0;
+    // LWP: approved LWP leaves + half days count as 0.5
+    const lwpLeaves = lawLeaves.filter(l => (l.type === "Leave Without Pay" || l.type === "Half Day") && l.status === "approved");
+    const lwpDays = lwpLeaves.reduce((sum, l) => sum + (l.type === "Half Day" ? 0.5 : (l.days || 0)), 0);
+    const lwpDeduction = salary > 0 && lwpDays > 0 ? Math.round((salary / calendarDaysInMonth) * lwpDays) : 0;
     const netPayable = proRatedSalary - lwpDeduction;
 
     const p = (text, opts = {}) => new Paragraph({
@@ -982,7 +982,7 @@ export default function App() {
           new Paragraph({ spacing: { before: 80, after: 80 }, children: [] }),
           new Table({ width: { size: 9360, type: WidthType.DXA }, rows: [
             new TableRow({ children: [cell("Monthly Salary (Gross)", { w: 6000, shade: true, bold: true }), cell("Rs. " + salary.toLocaleString("en-IN"), { w: 3360 })] }),
-            new TableRow({ children: [cell("Working Days in Exit Month", { w: 6000, shade: true, bold: true }), cell(workDaysInExitMonth + " of " + totalWorkDaysInExitMonth, { w: 3360 })] }),
+            new TableRow({ children: [cell("Basis of Calculation", { w: 6000, shade: true, bold: true }), cell("Calendar days: worked " + workedCalendarDays + " of " + calendarDaysInMonth + " days in month of exit", { w: 3360 })] }),
             new TableRow({ children: [cell("Pro-rated Salary for Exit Month", { w: 6000, shade: true, bold: true }), cell("Rs. " + proRatedSalary.toLocaleString("en-IN"), { w: 3360 })] }),
             new TableRow({ children: [cell("LWP Deduction (" + lwpDays + " day" + (lwpDays !== 1 ? "s" : "") + ")", { w: 6000, shade: true, bold: true }), cell("Rs. " + lwpDeduction.toLocaleString("en-IN"), { w: 3360 })] }),
             new TableRow({ children: [cell("Net Amount Payable", { w: 6000, hdr: true }), cell("Rs. " + netPayable.toLocaleString("en-IN"), { w: 3360, hdr: true })] }),
@@ -1010,6 +1010,133 @@ export default function App() {
 
     const blob = await Packer.toBlob(doc);
     saveAs(blob, lawyer.name.toUpperCase().replace(/ /g,"_") + "_EXIT_REPORT.docx");
+  }
+
+  async function generateFeedbackReport(lawyer) {
+    const meta = COUNSEL_META[lawyer.email?.toLowerCase()];
+    const lawAtt = attendance.filter(a => a.lawyer_id === lawyer.id).sort((a,b) => a.date.localeCompare(b.date));
+    const lawLeaves = leaves.filter(l => l.lawyer_id === lawyer.id);
+    const lawSats = saturdays.filter(s => s.lawyer_id === lawyer.id);
+    const FONT = "Book Antiqua";
+    const SZ = 20;
+    const SP = { before: 0, after: 0, line: 276, lineRule: "auto" };
+
+    // Ask for month and remarks
+    const monthStr = window.prompt("Enter month for report (YYYY-MM):", selectedReportMonth || getTodayStr().slice(0,7));
+    if (!monthStr) return;
+    const remarks = window.prompt("Enter your remarks / feedback for " + lawyer.name.split(" ")[0] + " (this will appear at the top of the report):", "");
+
+    const monthStart = monthStr + "-01";
+    const monthEndObj = new Date(new Date(monthStr + "-01T00:00:00").getFullYear(), new Date(monthStr + "-01T00:00:00").getMonth()+1, 0);
+    const monthEnd = monthStr + "-" + String(monthEndObj.getDate()).padStart(2,"0");
+    const calendarDaysInMonth = monthEndObj.getDate();
+    const salary = parseFloat(lawyer.monthly_salary) || 0;
+
+    // Calculate LWP
+    const lwpLeaves = lawLeaves.filter(l => (l.type === "Leave Without Pay" || l.type === "Half Day") && l.status === "approved" && l.from_date >= monthStart && l.from_date <= monthEnd);
+    const lwpDays = lwpLeaves.reduce((sum, l) => sum + (l.type === "Half Day" ? 0.5 : (l.days || 0)), 0);
+    const proRatedSalary = salary > 0 ? salary : 0;
+    const lwpDeduction = salary > 0 && lwpDays > 0 ? Math.round((salary / calendarDaysInMonth) * lwpDays) : 0;
+    const netPayable = proRatedSalary - lwpDeduction;
+
+    const workDays = getWorkingDaysBetween(monthStart, monthEnd);
+    const attRows = workDays.map(date => {
+      const rec = lawAtt.find(a => a.date === date);
+      const onLeave = lawLeaves.find(l => l.status === "approved" && l.from_date <= date && l.to_date >= date);
+      const isSatOff = lawSats.find(s => s.date === date && s.status === "off");
+      const dow = new Date(date + "T00:00:00").getDay();
+      const isSat = dow === 6;
+      const classification = onLeave ? onLeave.type
+        : isSat && isSatOff ? "Saturday Off"
+        : rec?.sign_in ? classifyDay(rec.sign_in, rec.sign_out)
+        : "No Record";
+      const hours = rec ? getHoursWorked(rec.sign_in, rec.sign_out) : 0;
+      const late = rec && isLateArrival(rec.sign_in);
+      return [formatDate(date), getDayOfWeek(date), rec?.sign_in ? formatTime(rec.sign_in) + (late ? " (late)" : "") : "--", rec?.sign_out ? formatTime(rec.sign_out) : "--", hours > 0 ? hours + "h" : "--", classification];
+    });
+
+    const daysPresent = attRows.filter(r => !["No Record"].includes(r[5]) && !r[5].includes("Saturday Off") && !r[5].includes("Leave Without Pay")).length;
+    const lateCount = attRows.filter(r => r[2].includes("late")).length;
+    const unexplained = attRows.filter(r => r[5] === "No Record").length;
+
+    const p = (text, opts = {}) => new Paragraph({
+      spacing: SP,
+      alignment: opts.center ? AlignmentType.CENTER : AlignmentType.LEFT,
+      children: [new TextRun({ text: text || "", font: FONT, size: opts.size || SZ, bold: opts.bold || false, italics: opts.italics || false, color: opts.color || "000000" })]
+    });
+
+    const cell = (text, opts = {}) => new TableCell({
+      shading: opts.hdr ? { type: ShadingType.CLEAR, fill: "0a2342" } : opts.shade ? { type: ShadingType.CLEAR, fill: "f0f4f8" } : undefined,
+      margins: { top: 50, bottom: 50, left: 80, right: 80 },
+      width: { size: opts.w || 2000, type: WidthType.DXA },
+      children: [new Paragraph({ spacing: SP, children: [new TextRun({ text: text || "", font: FONT, size: SZ, bold: opts.bold || opts.hdr || false, color: opts.hdr ? "ffffff" : "000000" })] })]
+    });
+
+    const monthLabel = new Date(monthStr + "-01T00:00:00").toLocaleString("en-IN", { month: "long", year: "numeric" });
+
+    const doc = new Document({
+      creator: "Aahna Mehrotra", lastModifiedBy: "Aahna Mehrotra",
+      title: "Feedback Report - " + lawyer.name + " - " + monthLabel,
+      sections: [{ properties: { page: { margin: { top: 1080, bottom: 1080, left: 1080, right: 1080 } } }, children: [
+        p("AM Sports Law & Management Co.", { bold: true, size: 26, center: true }),
+        p("Offices at Mumbai and Delhi", { size: 16, center: true, color: "555555" }),
+        new Paragraph({ spacing: { before: 0, after: 0 }, children: [] }),
+        p("MONTHLY PERFORMANCE AND ATTENDANCE FEEDBACK", { bold: true, size: 22, center: true }),
+        p(monthLabel, { italics: true, center: true, color: "555555" }),
+        new Paragraph({ spacing: { before: 80, after: 80 }, border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: "0a2342" } }, children: [] }),
+        new Paragraph({ spacing: { before: 80, after: 80 }, border: { bottom: { style: BorderStyle.SINGLE, size: 2, color: "0a2342" } }, children: [new TextRun({ text: "Counsel Details", font: FONT, size: SZ, bold: true, color: "0a2342" })] }),
+        new Paragraph({ spacing: { before: 80, after: 80 }, children: [] }),
+        new Table({ width: { size: 9360, type: WidthType.DXA }, rows: [
+          new TableRow({ children: [cell("Name", { w: 2800, shade: true, bold: true }), cell(lawyer.name, { w: 6560 })] }),
+          new TableRow({ children: [cell("Designation", { w: 2800, shade: true, bold: true }), cell("Counsel (Probation)", { w: 6560 })] }),
+          new TableRow({ children: [cell("Date of Joining", { w: 2800, shade: true, bold: true }), cell(formatDate(meta?.joinDate || ""), { w: 6560 })] }),
+          new TableRow({ children: [cell("Probation End Date", { w: 2800, shade: true, bold: true }), cell(formatDate(meta?.probationEnd || ""), { w: 6560 })] }),
+          new TableRow({ children: [cell("Report Period", { w: 2800, shade: true, bold: true }), cell(monthLabel, { w: 6560 })] }),
+        ]}),
+        ...(remarks ? [
+          new Paragraph({ spacing: { before: 160, after: 80 }, border: { bottom: { style: BorderStyle.SINGLE, size: 2, color: "0a2342" } }, children: [new TextRun({ text: "Feedback and Remarks", font: FONT, size: SZ, bold: true, color: "0a2342" })] }),
+          new Paragraph({ spacing: { before: 80, after: 0 }, children: [new TextRun({ text: remarks, font: FONT, size: SZ, italics: true })] }),
+        ] : []),
+        new Paragraph({ spacing: { before: 160, after: 80 }, border: { bottom: { style: BorderStyle.SINGLE, size: 2, color: "0a2342" } }, children: [new TextRun({ text: "Attendance Summary", font: FONT, size: SZ, bold: true, color: "0a2342" })] }),
+        new Paragraph({ spacing: { before: 80, after: 80 }, children: [] }),
+        new Table({ width: { size: 9360, type: WidthType.DXA }, rows: [
+          new TableRow({ children: [cell("Total Working Days in Month", { w: 6000, shade: true, bold: true }), cell(String(workDays.length), { w: 3360 })] }),
+          new TableRow({ children: [cell("Days Present", { w: 6000, shade: true, bold: true }), cell(String(daysPresent), { w: 3360 })] }),
+          new TableRow({ children: [cell("Late Arrivals", { w: 6000, shade: true, bold: true }), cell(String(lateCount), { w: 3360 })] }),
+          new TableRow({ children: [cell("Leave Without Pay Days", { w: 6000, shade: true, bold: true }), cell(String(lwpDays), { w: 3360 })] }),
+          new TableRow({ children: [cell("Unexplained Absences", { w: 6000, shade: true, bold: true }), cell(String(unexplained), { w: 3360 })] }),
+        ]}),
+        ...(salary > 0 ? [
+          new Paragraph({ spacing: { before: 160, after: 80 }, border: { bottom: { style: BorderStyle.SINGLE, size: 2, color: "0a2342" } }, children: [new TextRun({ text: "Indicative Salary Statement", font: FONT, size: SZ, bold: true, color: "0a2342" })] }),
+          new Paragraph({ spacing: { before: 80, after: 80 }, children: [] }),
+          new Table({ width: { size: 9360, type: WidthType.DXA }, rows: [
+            new TableRow({ children: [cell("Monthly Gross Salary", { w: 6000, shade: true, bold: true }), cell("Rs. " + salary.toLocaleString("en-IN"), { w: 3360 })] }),
+            new TableRow({ children: [cell("LWP Deduction (" + lwpDays + " day" + (lwpDays !== 1 ? "s" : "") + " at Rs. " + Math.round(salary/calendarDaysInMonth).toLocaleString("en-IN") + "/day)", { w: 6000, shade: true, bold: true }), cell("Rs. " + lwpDeduction.toLocaleString("en-IN"), { w: 3360 })] }),
+            new TableRow({ children: [cell("Net Payable (indicative)", { w: 6000, hdr: true }), cell("Rs. " + netPayable.toLocaleString("en-IN"), { w: 3360, hdr: true })] }),
+          ]}),
+          p("Note: This is an indicative salary statement for reference only. Final payroll subject to confirmation by AM Sports Law & Management Co.", { italics: true, color: "555555" }),
+        ] : []),
+        new Paragraph({ spacing: { before: 160, after: 80 }, border: { bottom: { style: BorderStyle.SINGLE, size: 2, color: "0a2342" } }, children: [new TextRun({ text: "Daily Attendance Log", font: FONT, size: SZ, bold: true, color: "0a2342" })] }),
+        new Paragraph({ spacing: { before: 80, after: 80 }, children: [] }),
+        new Table({ width: { size: 9360, type: WidthType.DXA }, columnWidths: [2000, 800, 1500, 1500, 900, 2660],
+          rows: [
+            new TableRow({ children: [cell("Date",{w:2000,hdr:true}),cell("Day",{w:800,hdr:true}),cell("Sign In",{w:1500,hdr:true}),cell("Sign Out",{w:1500,hdr:true}),cell("Hours",{w:900,hdr:true}),cell("Classification",{w:2660,hdr:true})] }),
+            ...attRows.map((r,i) => new TableRow({ children: r.map((text, ci) => cell(text, { w: [2000,800,1500,1500,900,2660][ci], shade: i%2===0 })) }))
+          ]
+        }),
+        new Paragraph({ spacing: { before: 160, after: 0 }, children: [] }),
+        new Paragraph({ spacing: { before: 0, after: 0 }, children: [] }),
+        new Paragraph({ spacing: { before: 0, after: 0 }, children: [] }),
+        p("Prepared by:"),
+        new Paragraph({ spacing: { before: 160, after: 0 }, border: { top: { style: BorderStyle.SINGLE, size: 4, color: "000000" } }, children: [new TextRun({ text: "Aahna Mehrotra", font: FONT, size: SZ, bold: true })] }),
+        p("Founder and Principal Lawyer"),
+        p("AM Sports Law & Management Co."),
+        p("Date: " + new Date().toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })),
+      ]}]
+    });
+
+    const blob = await Packer.toBlob(doc);
+    saveAs(blob, lawyer.name.toUpperCase().replace(/ /g,"_") + "_FEEDBACK_" + monthStr + ".docx");
   }
 
   async function handleCorrectionAction(id, action) {
@@ -1985,6 +2112,7 @@ Thank you.`);
                       }
                     }}>Salary</button>
                     {(l.active === false || !l.active) && <button className="btn bg bsm" onClick={() => generateExitReport(l)}>Exit Report</button>}
+                    {l.active !== false && isInProbation(l.email?.toLowerCase()) && <button className="btn bg bsm" onClick={() => generateFeedbackReport(l)}>Feedback Report</button>}
                   </div>
                 );
               })}
