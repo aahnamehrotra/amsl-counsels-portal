@@ -576,7 +576,7 @@ export default function App() {
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [expandedLogs, setExpandedLogs] = useState({});
-  const [selectedReportMonth, setSelectedReportMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [selectedReportMonth, setSelectedReportMonth] = useState(getTodayStr().slice(0, 7));
   const [missedSignoutDate, setMissedSignoutDate] = useState("");
 
   const today = getTodayStr();
@@ -1886,11 +1886,34 @@ Thank you.`);
               </div>
             </div>
 
+            {/* Month Selector */}
+            <div className="card">
+              <div className="ct">Select Month</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {(() => {
+                  const months = [];
+                  const cur = new Date("2026-05-01T00:00:00");
+                  const now = new Date(getTodayStr() + "T00:00:00");
+                  while (cur <= now) {
+                    const y = cur.getFullYear();
+                    const m = String(cur.getMonth()+1).padStart(2,"0");
+                    const val = y + "-" + m;
+                    const label = cur.toLocaleString("en-IN", { month: "short", year: "numeric" });
+                    months.push({ val, label });
+                    cur.setMonth(cur.getMonth()+1);
+                  }
+                  return months.reverse().map(({ val, label }) => (
+                    <button key={val} onClick={() => setSelectedReportMonth(val)} style={{ padding: "6px 14px", borderRadius: 3, fontFamily: "Raleway, sans-serif", fontSize: 11, fontWeight: 600, cursor: "pointer", border: "1px solid", borderColor: selectedReportMonth === val ? "#0a2342" : "#d0e4f4", background: selectedReportMonth === val ? "#0a2342" : "#ffffff", color: selectedReportMonth === val ? "#ffffff" : "#4a9fd4" }}>{label}</button>
+                  ));
+                })()}
+              </div>
+            </div>
+
             {/* Per-counsel attendance summary */}
             <div className="card" style={{ display: "flex", alignItems: "center", gap: 16, padding: "16px 24px" }}>
               <label style={{ fontFamily: "Raleway, sans-serif", fontSize: 11, color: "#7a94aa", fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase" }}>Viewing Month</label>
-              <input type="month" className="inp" value={selectedReportMonth} onChange={e => setSelectedReportMonth(e.target.value)} style={{ width: "auto", maxWidth: 200 }} />
-              <button className="btn bo bsm" onClick={() => setSelectedReportMonth(new Date().toISOString().slice(0, 7))}>Current Month</button>
+              <input type="month" className="inp" value={selectedReportMonth} min="2026-05" max={getTodayStr().slice(0, 7)} onChange={e => setSelectedReportMonth(e.target.value)} style={{ width: "auto", maxWidth: 200 }} />
+              <button className="btn bo bsm" onClick={() => setSelectedReportMonth(getTodayStr().slice(0, 7))}>Current Month</button>
             </div>
 
             {(() => {
