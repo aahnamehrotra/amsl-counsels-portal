@@ -561,7 +561,7 @@ export default function App() {
   const [leaveError, setLeaveError] = useState("");
   const [bervForm, setBervForm] = useState({ type: "Bereavement Leave (Immediate Family)", from: "", to: "", name: "", relation: "Parent", reason: "" });
   const [holidayForm, setHolidayForm] = useState({ date: "", name: "", type: "fixed" });
-  const [newCounselForm, setNewCounselForm] = useState({ name: "", email: "", is_admin: false });
+  const [newCounselForm, setNewCounselForm] = useState({ name: "", email: "", is_admin: false, monthly_salary: 0 });
   const [saturdays, setSaturdays] = useState([]);
   const [showSaturdayPrompt, setShowSaturdayPrompt] = useState(false);
   const [nextSatDate, setNextSatDate] = useState("");
@@ -1829,6 +1829,7 @@ Thank you.`);
               <div className="g3">
                 <div className="fld"><label className="lbl">Full Name</label><input type="text" className="inp" value={newCounselForm.name} onChange={e => setNewCounselForm(f => ({ ...f, name: e.target.value }))} placeholder="Priya Sharma" /></div>
                 <div className="fld"><label className="lbl">Firm Email</label><input type="email" className="inp" value={newCounselForm.email} onChange={e => setNewCounselForm(f => ({ ...f, email: e.target.value }))} placeholder="priya.sharma@amsportslaw.com" /></div>
+                <div className="fld"><label className="lbl">Monthly Salary (Rs.)</label><input type="number" className="inp" value={newCounselForm.monthly_salary || ""} onChange={e => setNewCounselForm(f => ({ ...f, monthly_salary: e.target.value }))} placeholder="e.g. 50000" /></div>
                 <div className="fld"><label className="lbl">Admin Access</label><select className="inp" value={newCounselForm.is_admin} onChange={e => setNewCounselForm(f => ({ ...f, is_admin: e.target.value === "true" }))}><option value="false">No</option><option value="true">Yes</option></select></div>
               </div>
               <button className="btn bg" onClick={handleAddCounsel}>Add Counsel</button>
@@ -1845,11 +1846,19 @@ Thank you.`);
                     <div style={{ flex: 1 }}>
                       <div style={{ fontFamily: "DM Mono, monospace", fontSize: 12, color: "#2a2a3a" }}>{l.name}</div>
                       <div style={{ fontFamily: "DM Mono, monospace", fontSize: 10, color: "#7a7a9a", marginTop: 2 }}>{l.email}</div>
+                      {l.monthly_salary > 0 && <div style={{ fontFamily: "DM Mono, monospace", fontSize: 10, color: "#4a9fd4", marginTop: 2 }}>Salary: Rs. {Number(l.monthly_salary).toLocaleString("en-IN")}/month</div>}
                     </div>
                     <span className={`badge ${status === "Active" ? "ba" : status === "Maternity" ? "blv" : "bprob"}`}>{status}</span>
                     {l.is_admin && <span className="badge bho">Admin</span>}
                     {!l.is_admin && <button className="btn brd bsm" onClick={() => handleRemoveCounsel(l.id)}>Remove</button>}
                     {!l.is_admin && <button className="btn br bsm" onClick={() => { setOffboardTarget(l); setOffboardForm({ exit_date: getTodayStr(), exit_reason: "termination", exit_remarks: "" }); setShowOffboardModal(true); }}>Offboard</button>}
+                    <button className="btn bo bsm" onClick={async () => {
+                      const sal = window.prompt("Enter monthly salary for " + l.name + " (Rs.):", l.monthly_salary || "0");
+                      if (sal !== null) {
+                        const r = await db.update("Lawyers", l.id, { monthly_salary: parseFloat(sal) || 0 });
+                        if (Array.isArray(r) && r[0]) { setLawyers(prev => prev.map(lw => lw.id === l.id ? r[0] : lw)); notify("Salary updated"); }
+                      }
+                    }}>Salary</button>
                   </div>
                 );
               })}
