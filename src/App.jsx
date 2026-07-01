@@ -907,9 +907,28 @@ export default function App() {
     // Worked until day before termination
     const workedCalendarDays = exitDateObj.getDate() - 1;
     const proRatedSalary = salary > 0 ? Math.round((salary / calendarDaysInMonth) * workedCalendarDays) : 0;
-    // LWP: approved LWP leaves + half days count as 0.5
-    const lwpLeaves = lawLeaves.filter(l => (l.type === "Leave Without Pay" || l.type === "Half Day") && l.status === "approved");
-    const lwpDays = lwpLeaves.reduce((sum, l) => sum + (l.type === "Half Day" ? 0.5 : (l.days || 0)), 0);
+    // LWP calculated from attendance log directly
+    const calcLWP = (rows, saturdaysData, lawyerId) => {
+      let lwp = 0;
+      rows.forEach(date => {
+        const rec = lawAtt.find(a => a.date === date);
+        const onApprovedLeave = lawLeaves.find(l => l.status === "approved" && l.from_date <= date && l.to_date >= date && l.type !== "Leave Without Pay");
+        const isSatOff = saturdaysData.find(s => s.lawyer_id === lawyerId && s.date === date && s.status === "off");
+        const dow = new Date(date + "T00:00:00").getDay();
+        const isSat = dow === 6;
+        if (onApprovedLeave) return; // approved leave - not LWP
+        if (isSat && isSatOff) return; // approved saturday off - not LWP
+        if (!rec || !rec.sign_in) {
+          lwp += 1; // full day absent = 1 LWP
+        } else {
+          const classification = classifyDay(rec.sign_in, rec.sign_out);
+          if (classification === "half-day") lwp += 0.5;
+          else if (classification === "day-off") lwp += 1;
+        }
+      });
+      return lwp;
+    };
+    const lwpDays = calcLWP(workDays, lawSats, lawyer.id);
     const lwpDeduction = salary > 0 && lwpDays > 0 ? Math.round((salary / calendarDaysInMonth) * lwpDays) : 0;
     const netPayable = proRatedSalary - lwpDeduction;
 
@@ -1036,10 +1055,29 @@ export default function App() {
     const calendarDaysInMonth = monthEndObj.getDate();
     const salary = parseFloat(lawyer.monthly_salary) || 0;
 
-    // Calculate LWP
-    const lwpLeaves = lawLeaves.filter(l => (l.type === "Leave Without Pay" || l.type === "Half Day") && l.status === "approved" && l.from_date >= monthStart && l.from_date <= monthEnd);
-    const lwpDays = lwpLeaves.reduce((sum, l) => sum + (l.type === "Half Day" ? 0.5 : (l.days || 0)), 0);
+    // Calculate LWP from attendance log
     const proRatedSalary = salary > 0 ? salary : 0;
+    const calcLWPMonth = (dates) => {
+      let lwp = 0;
+      dates.forEach(date => {
+        const rec = lawAtt.find(a => a.date === date);
+        const onApprovedLeave = lawLeaves.find(l => l.status === "approved" && l.from_date <= date && l.to_date >= date && l.type !== "Leave Without Pay");
+        const isSatOff = lawSats.find(s => s.lawyer_id === lawyer.id && s.date === date && s.status === "off");
+        const dow = new Date(date + "T00:00:00").getDay();
+        const isSat = dow === 6;
+        if (onApprovedLeave) return;
+        if (isSat && isSatOff) return;
+        if (!rec || !rec.sign_in) {
+          lwp += 1;
+        } else {
+          const classification = classifyDay(rec.sign_in, rec.sign_out);
+          if (classification === "half-day") lwp += 0.5;
+          else if (classification === "day-off") lwp += 1;
+        }
+      });
+      return lwp;
+    };
+    const lwpDays = calcLWPMonth(workDays);
     const lwpDeduction = salary > 0 && lwpDays > 0 ? Math.round((salary / calendarDaysInMonth) * lwpDays) : 0;
     const netPayable = proRatedSalary - lwpDeduction;
 
