@@ -887,6 +887,162 @@ export default function App() {
     }
   }
 
+  function generateExitReport(lawyer) {
+    const meta = COUNSEL_META[lawyer.email?.toLowerCase()];
+    const lawAtt = attendance.filter(a => a.lawyer_id === lawyer.id).sort((a,b) => a.date.localeCompare(b.date));
+    const lawLeaves = leaves.filter(l => l.lawyer_id === lawyer.id);
+    const lawSats = saturdays.filter(s => s.lawyer_id === lawyer.id);
+    const exitDate = lawyer.exit_date || getTodayStr();
+    const joinDate = meta?.joinDate || "";
+    const salary = lawyer.monthly_salary || 0;
+
+    // Calculate working days and pro-rated salary
+    const workDays = getWorkingDaysBetween(joinDate, exitDate);
+    const daysInMonth = new Date(new Date(exitDate).getFullYear(), new Date(exitDate).getMonth()+1, 0).getDate();
+    const monthStart = exitDate.slice(0,7) + "-01";
+    const workDaysInExitMonth = getWorkingDaysBetween(monthStart, exitDate).length;
+    const totalWorkDaysInExitMonth = getWorkingDaysBetween(monthStart, new Date(new Date(exitDate).getFullYear(), new Date(exitDate).getMonth()+1, 0).toISOString().split("T")[0]).length;
+    const proRatedSalary = salary > 0 ? Math.round((salary / totalWorkDaysInExitMonth) * workDaysInExitMonth) : 0;
+
+    // LWP deductions
+    const lwpLeaves = lawLeaves.filter(l => l.type === "Leave Without Pay" && l.status === "approved");
+    const lwpDays = lwpLeaves.reduce((sum, l) => sum + (l.days || 0), 0);
+    const lwpDeduction = salary > 0 && lwpDays > 0 ? Math.round((salary / totalWorkDaysInExitMonth) * lwpDays) : 0;
+    const netPayable = proRatedSalary - lwpDeduction;
+
+    // Build attendance rows
+    const attRows = workDays.map(date => {
+      const rec = lawAtt.find(a => a.date === date);
+      const onLeave = lawLeaves.find(l => l.status === "approved" && l.from_date <= date && l.to_date >= date);
+      const isSatOff = lawSats.find(s => s.date === date && s.status === "off");
+      const isSatWork = lawSats.find(s => s.date === date && s.status === "working");
+      const dow = new Date(date + "T00:00:00").getDay();
+      const isSat = dow === 6;
+      const classification = date === exitDate && lawyer.exit_reason === "termination" ? "Terminated -- Not Counted"
+        : onLeave ? onLeave.type
+        : isSat && isSatOff ? "Saturday Off"
+        : isSat && !isSatWork && !rec ? "Saturday (Unrecorded)"
+        : rec?.sign_in ? classifyDay(rec.sign_in, rec.sign_out)
+        : "No Record";
+      const hours = rec ? getHoursWorked(rec.sign_in, rec.sign_out) : 0;
+      const late = rec && isLateArrival(rec.sign_in);
+      const rowColor = date === exitDate && lawyer.exit_reason === "termination" ? "#ffebee"
+        : onLeave ? "#e3f2fd"
+        : isSat ? "#f5f5f5"
+        : classification === "full-day" ? "#f1f8e9"
+        : classification === "half-day" ? "#f3e5f5"
+        : classification === "short-day" ? "#fff8e1"
+        : classification === "No Record" ? "#fff8f8"
+        : "#fff";
+      return { date, dow: getDayOfWeek(date), signIn: rec?.sign_in ? formatTime(rec.sign_in) + (late ? " (late)" : "") : "--", signOut: rec?.sign_out ? formatTime(rec.sign_out) : "--", hours: hours > 0 ? hours + "h" : "--", classification, rowColor };
+    });
+
+    const daysPresent = attRows.filter(r => r.classification !== "No Record" && r.classification !== "Terminated -- Not Counted" && !r.classification.includes("Saturday") && !r.classification.includes("Leave")).length;
+
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Exit Report - ${lawyer.name}</title>
+<style>
+  body { font-family: 'Book Antiqua', Georgia, serif; font-size: 10pt; margin: 40px; color: #1a1a1a; line-height: 1.15; }
+  h1 { font-size: 16pt; text-align: center; color: #0a2342; margin-bottom: 4px; }
+  h2 { font-size: 11pt; color: #0a2342; border-bottom: 2px solid #0a2342; padding-bottom: 4px; margin-top: 24px; margin-bottom: 10px; }
+  .center { text-align: center; }
+  .subtitle { text-align: center; font-size: 9pt; color: #555; margin-bottom: 4px; }
+  .divider { border: none; border-top: 4px solid #0a2342; margin: 16px 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 9pt; margin-bottom: 12px; }
+  th { background: #0a2342; color: white; padding: 6px 8px; text-align: left; font-weight: bold; }
+  td { padding: 5px 8px; border-bottom: 1px solid #e0e0e0; }
+  .detail-label { background: #f0f4f8; font-weight: bold; width: 35%; }
+  .remarks { background: #f9f9f9; border-left: 4px solid #0a2342; padding: 10px 14px; font-style: italic; margin: 10px 0; font-size: 9.5pt; }
+  .financial { background: #f0f4f8; }
+  .financial td { font-weight: bold; }
+  .net { background: #0a2342; color: white; font-weight: bold; }
+  .signature { margin-top: 48px; }
+  .sig-line { border-top: 1px solid #333; width: 280px; margin-top: 48px; padding-top: 4px; }
+  .note { font-size: 8.5pt; color: #555; font-style: italic; margin-top: 8px; }
+  @media print { body { margin: 20px; } }
+</style>
+</head>
+<body>
+
+<h1>AM Sports Law &amp; Management Co.</h1>
+<p class="subtitle">Offices at Mumbai and Delhi</p>
+<p class="subtitle" style="font-size:11pt; font-weight:bold; margin-top:12px;">ATTENDANCE AND EXIT RECORD</p>
+<p class="subtitle" style="font-style:italic;">Prepared for Full and Final Settlement</p>
+<hr class="divider">
+
+<h2>Counsel Details</h2>
+<table>
+  <tr><td class="detail-label">Name</td><td>${lawyer.name}</td></tr>
+  <tr><td class="detail-label">Designation</td><td>Counsel</td></tr>
+  <tr><td class="detail-label">Date of Joining</td><td>${formatDate(joinDate)}</td></tr>
+  <tr><td class="detail-label">Date of Exit</td><td>${formatDate(exitDate)}</td></tr>
+  <tr><td class="detail-label">Reason for Exit</td><td>${lawyer.exit_reason ? lawyer.exit_reason.replace(/_/g, " ").replace(/\w/g, l => l.toUpperCase()) : "--"}</td></tr>
+</table>
+
+${lawyer.exit_remarks ? `<h2>Remarks</h2><div class="remarks">${lawyer.exit_remarks}</div>` : ""}
+
+<h2>Attendance Summary</h2>
+<table>
+  <tr><td class="detail-label">Total Working Days (period of employment)</td><td>${workDays.length}</td></tr>
+  <tr><td class="detail-label">Days Present</td><td>${daysPresent}</td></tr>
+  <tr><td class="detail-label">Approved Leaves</td><td>${lawLeaves.filter(l => l.status === "approved" && l.type !== "Leave Without Pay").length > 0 ? lawLeaves.filter(l => l.status === "approved").map(l => l.type + " (" + l.days + " day" + (l.days > 1 ? "s" : "") + ")").join(", ") : "None"}</td></tr>
+  <tr><td class="detail-label">Leave Without Pay Days</td><td>${lwpDays}</td></tr>
+  <tr><td class="detail-label">Late Arrivals</td><td>${attRows.filter(r => r.signIn.includes("late")).length}</td></tr>
+  <tr><td class="detail-label">Unexplained Absences</td><td>${attRows.filter(r => r.classification === "No Record" && !r.date.includes("Saturday")).length}</td></tr>
+</table>
+
+${salary > 0 ? `<h2>Financial Summary</h2>
+<table>
+  <tr><td class="detail-label">Monthly Salary (Gross)</td><td>Rs. ${salary.toLocaleString("en-IN")}</td></tr>
+  <tr><td class="detail-label">Working Days in Exit Month</td><td>${workDaysInExitMonth} of ${totalWorkDaysInExitMonth}</td></tr>
+  <tr><td class="detail-label">Pro-rated Salary for Exit Month</td><td>Rs. ${proRatedSalary.toLocaleString("en-IN")}</td></tr>
+  <tr><td class="detail-label">LWP Deduction (${lwpDays} day${lwpDays !== 1 ? "s" : ""})</td><td>Rs. ${lwpDeduction.toLocaleString("en-IN")}</td></tr>
+  <tr class="net"><td>Net Amount Payable</td><td>Rs. ${netPayable.toLocaleString("en-IN")}</td></tr>
+</table>
+<p class="note">Note: The above financial summary is indicative and subject to review. Tax deductions, PF, and other statutory deductions are not included. Final settlement amount to be confirmed by AM Sports Law &amp; Management Co.</p>` : ""}
+
+<h2>Daily Attendance Log</h2>
+<table>
+  <tr>
+    <th style="width:18%">Date</th>
+    <th style="width:8%">Day</th>
+    <th style="width:14%">Sign In</th>
+    <th style="width:14%">Sign Out</th>
+    <th style="width:10%">Hours</th>
+    <th style="width:20%">Classification</th>
+  </tr>
+  ${attRows.map(r => `<tr style="background:${r.rowColor}">
+    <td>${formatDate(r.date)}</td>
+    <td>${r.dow}</td>
+    <td>${r.signIn}</td>
+    <td>${r.signOut}</td>
+    <td>${r.hours}</td>
+    <td>${r.classification}</td>
+  </tr>`).join("")}
+</table>
+
+<div class="signature">
+  <p>Prepared by:</p>
+  <div class="sig-line">
+    <strong>Aahna Mehrotra</strong><br>
+    Founder and Principal Lawyer<br>
+    AM Sports Law &amp; Management Co.<br>
+    Date: ${new Date().toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}
+  </div>
+</div>
+
+</body>
+</html>`;
+
+    const win = window.open("", "_blank");
+    win.document.write(html);
+    win.document.close();
+    win.print();
+  }
+
   async function handleCorrectionAction(id, action) {
     const correction = corrections.find(c => c.id === id);
     const result = await db.update("Corrections", id, { status: action });
@@ -1859,6 +2015,7 @@ Thank you.`);
                         if (Array.isArray(r) && r[0]) { setLawyers(prev => prev.map(lw => lw.id === l.id ? r[0] : lw)); notify("Salary updated"); }
                       }
                     }}>Salary</button>
+                    {(l.active === false || !l.active) && <button className="btn bg bsm" onClick={() => generateExitReport(l)}>Exit Report</button>}
                   </div>
                 );
               })}
