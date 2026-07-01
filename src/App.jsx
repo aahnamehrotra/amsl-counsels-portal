@@ -565,6 +565,8 @@ export default function App() {
   const [activeTab, setActiveTab] = useState("apply");
   const [interns, setInterns] = useState([]);
   const [internAttendance, setInternAttendance] = useState([]);
+  const [internLeaves, setInternLeaves] = useState([]);
+  const [internLeaveForm, setInternLeaveForm] = useState({ from: "", to: "", reason: "" });
   const [selectedIntern, setSelectedIntern] = useState(null);
   const [isParalegal, setIsParalegal] = useState(false);
   const [internForm, setInternForm] = useState({ name: "", start_date: "", end_date: "" });
@@ -574,6 +576,7 @@ export default function App() {
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [expandedLogs, setExpandedLogs] = useState({});
+  const [selectedReportMonth, setSelectedReportMonth] = useState(new Date().toISOString().slice(0, 7));
   const [missedSignoutDate, setMissedSignoutDate] = useState("");
 
   const today = getTodayStr();
@@ -624,7 +627,8 @@ export default function App() {
     }
 
     // Load interns and intern attendance
-    const [iv, ia, nv] = await Promise.all([db.get("Interns"), db.get("InternAttendance"), db.get("Notifications")]);
+    const [iv, ia, nv, ilv] = await Promise.all([db.get("Interns"), db.get("InternAttendance"), db.get("Notifications"), db.get("InternLeaves")]);
+    setInternLeaves(Array.isArray(ilv) ? ilv : []);
     setNotifications(Array.isArray(nv) ? nv.filter(n => String(n.lawyer_id) === String(lawyersList.find(lw => lw.email?.toLowerCase() === email)?.id)) : []);
     setInterns(Array.isArray(iv) ? iv : []);
     setInternAttendance(Array.isArray(ia) ? ia : []);
@@ -938,6 +942,43 @@ Request Date: ${formatDate(today)}
 Thank you.`);
     window.open(`mailto:aahna.mehrotra@amsportslaw.com,admin@amsportslaw.com?subject=${subject}&body=${body}`);
     notify("Certificate request sent via email");
+  }
+
+  async function handleInternLeaveSubmit() {
+    if (!selectedIntern || !internLeaveForm.from || !internLeaveForm.reason) {
+      notify("Please fill all fields.", "error"); return;
+    }
+    const to = internLeaveForm.to || internLeaveForm.from;
+    const days = Math.ceil((new Date(to) - new Date(internLeaveForm.from)) / 86400000) + 1;
+    const result = await db.insert("InternLeaves", {
+      intern_id: selectedIntern.id, intern_name: selectedIntern.name,
+      from_date: internLeaveForm.from, to_date: to, days,
+      reason: internLeaveForm.reason, status: "pending", applied_on: getTodayStr()
+    });
+    if (Array.isArray(result) && result[0]) {
+      setInternLeaves(prev => [...prev, result[0]]);
+      setInternLeaveForm({ from: "", to: "", reason: "" });
+      notify("Leave request submitted");
+      // Notify all confirmed counsels
+      const confirmedCounsels = lawyers.filter(l => !isInProbation(l.email?.toLowerCase()) && l.email?.toLowerCase() !== PARALEGAL_EMAIL);
+      const msg = selectedIntern.name + " (Intern) has requested leave from " + formatDate(internLeaveForm.from) + (to !== internLeaveForm.from ? " to " + formatDate(to) : "") + ".";
+      await Promise.all(confirmedCounsels.map(l => db.insert("Notifications", { lawyer_id: l.id, message: msg, type: "intern_leave_submitted", read: false })));
+    }
+  }
+
+  async function handleInternLeaveAction(id, action) {
+    const leave = internLeaves.find(l => l.id === id);
+    const result = await db.update("InternLeaves", id, { status: action });
+    if (Array.isArray(result) && result[0]) {
+      setInternLeaves(prev => prev.map(l => l.id === id ? result[0] : l));
+      notify(action === "approved" ? "Leave approved" : "Leave rejected");
+      // Notify all counsels so they know intern is on leave
+      if (leave) {
+        const confirmedCounsels = lawyers.filter(l => !isInProbation(l.email?.toLowerCase()) && l.email?.toLowerCase() !== PARALEGAL_EMAIL);
+        const msg = leave.intern_name + " (Intern) leave from " + formatDate(leave.from_date) + (leave.from_date !== leave.to_date ? " to " + formatDate(leave.to_date) : "") + " has been " + action + ".";
+        await Promise.all(confirmedCounsels.map(l => db.insert("Notifications", { lawyer_id: l.id, message: msg, type: "intern_leave_" + action, read: false })));
+      }
+    }
   }
 
   async function handleBervSubmit() {
@@ -1846,9 +1887,15 @@ Thank you.`);
             </div>
 
             {/* Per-counsel attendance summary */}
+            <div className="card" style={{ display: "flex", alignItems: "center", gap: 16, padding: "16px 24px" }}>
+              <label style={{ fontFamily: "Raleway, sans-serif", fontSize: 11, color: "#7a94aa", fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase" }}>Viewing Month</label>
+              <input type="month" className="inp" value={selectedReportMonth} onChange={e => setSelectedReportMonth(e.target.value)} style={{ width: "auto", maxWidth: 200 }} />
+              <button className="btn bo bsm" onClick={() => setSelectedReportMonth(new Date().toISOString().slice(0, 7))}>Current Month</button>
+            </div>
+
             {(() => {
               const today = getTodayStr();
-              const currentMonth = today.slice(0, 7);
+              const currentMonth = selectedReportMonth;
               const monthStart = currentMonth + "-01";
               const daysInMonth = new Date(parseInt(currentMonth.slice(0,4)), parseInt(currentMonth.slice(5,7)), 0).getDate();
               const monthEnd = currentMonth + "-" + String(daysInMonth).padStart(2,"0");
@@ -2124,6 +2171,74 @@ Thank you.`);
                   {selectedIntern.certificate_requested && (
                     <div className="alert alert-info" style={{ marginTop: 16 }}>Certificate requested on {formatDate(selectedIntern.certificate_request_date)}. Aahna will be in touch.</div>
                   )}
+
+                  {/* Intern Leave Application */}
+                  <div className="card" style={{ marginTop: 16 }}>
+                    <div className="ct">Apply for Leave</div>
+                    <div className="fld">
+                      <label className="lbl">From</label>
+                      <input type="date" className="inp" value={internLeaveForm.from} onChange={e => setInternLeaveForm(f => ({ ...f, from: e.target.value }))} />
+                    </div>
+                    <div className="fld">
+                      <label className="lbl">To (leave blank for single day)</label>
+                      <input type="date" className="inp" value={internLeaveForm.to} onChange={e => setInternLeaveForm(f => ({ ...f, to: e.target.value }))} />
+                    </div>
+                    <div className="fld">
+                      <label className="lbl">Reason</label>
+                      <textarea className="inp" rows={3} value={internLeaveForm.reason} onChange={e => setInternLeaveForm(f => ({ ...f, reason: e.target.value }))} placeholder="Brief reason..." style={{ resize: "vertical" }}></textarea>
+                    </div>
+                    <button className="btn bg" onClick={handleInternLeaveSubmit}>Submit Leave Request</button>
+                  </div>
+
+                  {/* Intern Leave History */}
+                  {internLeaves.filter(l => l.intern_id === selectedIntern.id).length > 0 && (
+                    <div className="card" style={{ marginTop: 16 }}>
+                      <div className="ct">Leave History</div>
+                      {internLeaves.filter(l => l.intern_id === selectedIntern.id).map(l => (
+                        <div key={l.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: "1px solid #f0f4f8" }}>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontFamily: "Raleway, sans-serif", fontSize: 12, color: "#0a2342", fontWeight: 600 }}>{formatDate(l.from_date)}{l.from_date !== l.to_date ? " to " + formatDate(l.to_date) : ""} ({l.days} day{l.days > 1 ? "s" : ""})</div>
+                            <div style={{ fontFamily: "Raleway, sans-serif", fontSize: 11, color: "#7a94aa", marginTop: 2 }}>{l.reason}</div>
+                          </div>
+                          <span className={`badge ${l.status === "approved" ? "ba" : l.status === "rejected" ? "brej" : "bp"}`}>{l.status}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Intern Leave Application */}
+                  <div className="card" style={{ marginTop: 16 }}>
+                    <div className="ct">Apply for Leave</div>
+                    <div className="fld">
+                      <label className="lbl">From</label>
+                      <input type="date" className="inp" value={internLeaveForm.from} onChange={e => setInternLeaveForm(f => ({ ...f, from: e.target.value }))} />
+                    </div>
+                    <div className="fld">
+                      <label className="lbl">To (leave blank for single day)</label>
+                      <input type="date" className="inp" value={internLeaveForm.to} onChange={e => setInternLeaveForm(f => ({ ...f, to: e.target.value }))} />
+                    </div>
+                    <div className="fld">
+                      <label className="lbl">Reason</label>
+                      <textarea className="inp" rows={3} value={internLeaveForm.reason} onChange={e => setInternLeaveForm(f => ({ ...f, reason: e.target.value }))} placeholder="Brief reason..." style={{ resize: "vertical" }}></textarea>
+                    </div>
+                    <button className="btn bg" onClick={handleInternLeaveSubmit}>Submit Leave Request</button>
+                  </div>
+
+                  {/* Intern Leave History */}
+                  {internLeaves.filter(l => l.intern_id === selectedIntern.id).length > 0 && (
+                    <div className="card" style={{ marginTop: 16 }}>
+                      <div className="ct">Leave History</div>
+                      {internLeaves.filter(l => l.intern_id === selectedIntern.id).map(l => (
+                        <div key={l.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: "1px solid #f0f4f8" }}>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontFamily: "Raleway, sans-serif", fontSize: 12, color: "#0a2342", fontWeight: 600 }}>{formatDate(l.from_date)}{l.from_date !== l.to_date ? " to " + formatDate(l.to_date) : ""} ({l.days} day{l.days > 1 ? "s" : ""})</div>
+                            <div style={{ fontFamily: "Raleway, sans-serif", fontSize: 11, color: "#7a94aa", marginTop: 2 }}>{l.reason}</div>
+                          </div>
+                          <span className={`badge ${l.status === "approved" ? "ba" : l.status === "rejected" ? "brej" : "bp"}`}>{l.status}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </>
               );
             })()}
@@ -2182,11 +2297,29 @@ Thank you.`);
                     {todayRec?.sign_in && !todayRec?.sign_out ? <span className="badge bin">In Office</span>
                       : todayRec?.sign_out ? <span className="badge ba">Done</span>
                       : <span className="badge bout">Not In</span>}
-                    {isFounder(user) && <button className="btn brd bsm" onClick={() => handleRemoveIntern(i.id)}>Remove</button>}
+                    <button className="btn brd bsm" onClick={() => handleRemoveIntern(i.id)}>Remove</button>
                   </div>
                 );
               })}
             </div>
+
+            {/* Pending Intern Leaves */}
+            {internLeaves.filter(l => l.status === "pending").length > 0 && (
+              <div className="card">
+                <div className="ct">Pending Intern Leave Requests ({internLeaves.filter(l => l.status === "pending").length})</div>
+                {internLeaves.filter(l => l.status === "pending").map(l => (
+                  <div key={l.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderBottom: "1px solid #f0f4f8" }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontFamily: "Raleway, sans-serif", fontSize: 12, color: "#0a2342", fontWeight: 600 }}>{l.intern_name}</div>
+                      <div style={{ fontFamily: "Raleway, sans-serif", fontSize: 11, color: "#7a94aa", marginTop: 2 }}>{formatDate(l.from_date)}{l.from_date !== l.to_date ? " to " + formatDate(l.to_date) : ""} . {l.days} day{l.days > 1 ? "s" : ""}</div>
+                      <div style={{ fontFamily: "Raleway, sans-serif", fontSize: 11, color: "#4a6070", marginTop: 2, fontStyle: "italic" }}>{l.reason}</div>
+                    </div>
+                    <button className="btn bgr bsm" onClick={() => handleInternLeaveAction(l.id, "approved")}>Approve</button>
+                    <button className="btn br bsm" onClick={() => handleInternLeaveAction(l.id, "rejected")}>Reject</button>
+                  </div>
+                ))}
+              </div>
+            )}
           </>
         )}
 
