@@ -1833,6 +1833,7 @@ Thank you.`);
                     <span className={`badge ${status === "Active" ? "ba" : status === "Maternity" ? "blv" : "bprob"}`}>{status}</span>
                     {l.is_admin && <span className="badge bho">Admin</span>}
                     {!l.is_admin && <button className="btn brd bsm" onClick={() => handleRemoveCounsel(l.id)}>Remove</button>}
+                    {!l.is_admin && <button className="btn br bsm" onClick={() => { setOffboardTarget(l); setOffboardForm({ exit_date: getTodayStr(), exit_reason: "termination", exit_remarks: "" }); setShowOffboardModal(true); }}>Offboard</button>}
                   </div>
                 );
               })}
