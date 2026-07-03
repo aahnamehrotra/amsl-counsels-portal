@@ -576,6 +576,9 @@ export default function App() {
   const [interns, setInterns] = useState([]);
   const [internAttendance, setInternAttendance] = useState([]);
   const [internLeaves, setInternLeaves] = useState([]);
+  const [attendanceNotes, setAttendanceNotes] = useState([]);
+  const [showNoteModal, setShowNoteModal] = useState(false);
+  const [noteForm, setNoteForm] = useState({ lawyer_id: null, date: "", note: "", is_half_day_override: false });
   const [internLeaveForm, setInternLeaveForm] = useState({ from: "", to: "", reason: "" });
   const [selectedIntern, setSelectedIntern] = useState(null);
   const [isParalegal, setIsParalegal] = useState(false);
@@ -640,8 +643,9 @@ export default function App() {
     }
 
     // Load interns and intern attendance
-    const [iv, ia, nv, ilv] = await Promise.all([db.get("Interns"), db.get("InternAttendance"), db.get("Notifications"), db.get("InternLeaves")]);
+    const [iv, ia, nv, ilv, anv] = await Promise.all([db.get("Interns"), db.get("InternAttendance"), db.get("Notifications"), db.get("InternLeaves"), db.get("AttendanceNotes")]);
     setInternLeaves(Array.isArray(ilv) ? ilv : []);
+    setAttendanceNotes(Array.isArray(anv) ? anv : []);
     setNotifications(Array.isArray(nv) ? nv.filter(n => String(n.lawyer_id) === String(lawyersList.find(lw => lw.email?.toLowerCase() === email)?.id)) : []);
     setInterns(Array.isArray(iv) ? iv : []);
     setInternAttendance(Array.isArray(ia) ? ia : []);
@@ -958,7 +962,9 @@ export default function App() {
         : "No Record";
       const hours = rec ? getHoursWorked(rec.sign_in, rec.sign_out) : 0;
       const late = rec && isLateArrival(rec.sign_in);
-      return [formatDate(date), getDayOfWeek(date), rec?.sign_in ? formatTime(rec.sign_in) + (late ? " (late)" : "") : "--", rec?.sign_out ? formatTime(rec.sign_out) : "--", hours > 0 ? hours + "h" : "--", classification];
+      const dayNote = lawNotes?.find(n => n.date === date)?.note || "";
+      const classWithNote = dayNote ? classification + (classification !== "--" ? " -- " : "") + dayNote : classification;
+      return [formatDate(date), getDayOfWeek(date), rec?.sign_in ? formatTime(rec.sign_in) + (late ? " (late)" : "") : "--", rec?.sign_out ? formatTime(rec.sign_out) : "--", hours > 0 ? hours + "h" : "--", classWithNote];
     });
 
     const daysPresent = attRows.filter(r => !["No Record","Terminated - Not Counted"].includes(r[5]) && !r[5].includes("Saturday") && !r[5].includes("Leave")).length;
@@ -1057,16 +1063,19 @@ export default function App() {
 
     // Calculate LWP from attendance log
     const proRatedSalary = salary > 0 ? salary : 0;
+    const lawNotesMonth = attendanceNotes.filter(n => n.lawyer_id === lawyer.id);
     const calcLWPMonth = (dates) => {
       let lwp = 0;
       dates.forEach(date => {
         const rec = lawAtt.find(a => a.date === date);
         const onApprovedLeave = lawLeaves.find(l => l.status === "approved" && l.from_date <= date && l.to_date >= date && l.type !== "Leave Without Pay");
         const isSatOff = lawSats.find(s => s.lawyer_id === lawyer.id && s.date === date && s.status === "off");
+        const note = lawNotesMonth.find(n => n.date === date);
         const dow = new Date(date + "T00:00:00").getDay();
         const isSat = dow === 6;
         if (onApprovedLeave) return;
         if (isSat && isSatOff) return;
+        if (note?.is_half_day_override) { lwp += 0.5; return; }
         if (!rec || !rec.sign_in) {
           lwp += 1;
         } else {
@@ -1094,7 +1103,9 @@ export default function App() {
         : "No Record";
       const hours = rec ? getHoursWorked(rec.sign_in, rec.sign_out) : 0;
       const late = rec && isLateArrival(rec.sign_in);
-      return [formatDate(date), getDayOfWeek(date), rec?.sign_in ? formatTime(rec.sign_in) + (late ? " (late)" : "") : "--", rec?.sign_out ? formatTime(rec.sign_out) : "--", hours > 0 ? hours + "h" : "--", classification];
+      const dayNote = lawNotes?.find(n => n.date === date)?.note || "";
+      const classWithNote = dayNote ? classification + (classification !== "--" ? " -- " : "") + dayNote : classification;
+      return [formatDate(date), getDayOfWeek(date), rec?.sign_in ? formatTime(rec.sign_in) + (late ? " (late)" : "") : "--", rec?.sign_out ? formatTime(rec.sign_out) : "--", hours > 0 ? hours + "h" : "--", classWithNote];
     });
 
     const daysPresent = attRows.filter(r => !["No Record"].includes(r[5]) && !r[5].includes("Saturday Off") && !r[5].includes("Leave Without Pay")).length;
@@ -1272,6 +1283,23 @@ Request Date: ${formatDate(today)}
 Thank you.`);
     window.open(`mailto:aahna.mehrotra@amsportslaw.com,admin@amsportslaw.com?subject=${subject}&body=${body}`);
     notify("Certificate request sent via email");
+  }
+
+  async function handleSaveNote() {
+    if (!noteForm.date || !noteForm.note) return;
+    const existing = attendanceNotes.find(n => n.lawyer_id === noteForm.lawyer_id && n.date === noteForm.date);
+    if (existing) {
+      const result = await db.update("AttendanceNotes", existing.id, { note: noteForm.note, is_half_day_override: noteForm.is_half_day_override, added_by: user.name });
+      if (Array.isArray(result) && result[0]) {
+        setAttendanceNotes(prev => prev.map(n => n.id === existing.id ? result[0] : n));
+      }
+    } else {
+      const result = await db.insert("AttendanceNotes", { lawyer_id: noteForm.lawyer_id, date: noteForm.date, note: noteForm.note, is_half_day_override: noteForm.is_half_day_override, added_by: user.name });
+      if (Array.isArray(result) && result[0]) setAttendanceNotes(prev => [...prev, result[0]]);
+    }
+    setShowNoteModal(false);
+    setNoteForm({ lawyer_id: null, date: "", note: "", is_half_day_override: false });
+    notify("Note saved");
   }
 
   async function handleInternLeaveSubmit() {
@@ -1825,10 +1853,15 @@ Thank you.`);
             </div>
             <div className="card">
               <table>
-                <thead><tr><th>Date</th><th>Sign In</th><th>Sign Out</th><th>Duration</th><th>Status</th><th></th></tr></thead>
+                <thead><tr><th>Date</th><th>Sign In</th><th>Sign Out</th><th>Duration</th><th>Status</th><th>Note</th><th></th></tr></thead>
                 <tbody>
                   {[...userAtt].sort((a, b) => b.date.localeCompare(a.date)).map((a, i) => (
-                    <tr key={i}><td>{formatDate(a.date)}</td><td>{formatTime(a.sign_in)}</td><td>{formatTime(a.sign_out)}</td><td>{getDuration(a.sign_in, a.sign_out) || "-"}</td><td><span className={`badge ${a.sign_out ? "ba" : "bp"}`}>{a.sign_out ? "Complete" : "In Progress"}</span></td><td><button className="btn brd bsm" onClick={() => handleDeleteAttendance(a.id, a.date)}>Delete</button></td></tr>
+                    <tr key={i}><td>{formatDate(a.date)}</td><td>{formatTime(a.sign_in)}</td><td>{formatTime(a.sign_out)}</td><td>{getDuration(a.sign_in, a.sign_out) || "-"}</td><td><span className={`badge ${a.sign_out ? "ba" : "bp"}`}>{a.sign_out ? "Complete" : "In Progress"}</span></td>
+                      <td style={{ fontSize: 10, color: "#7a94aa", fontStyle: "italic" }}>{attendanceNotes.find(n => n.lawyer_id === user?.id && n.date === a.date)?.note || ""}</td>
+                      <td>
+                        <button className="btn bo bsm" onClick={() => { const ex = attendanceNotes.find(n => n.lawyer_id === user?.id && n.date === a.date); setNoteForm({ lawyer_id: user?.id, date: a.date, note: ex?.note || "", is_half_day_override: ex?.is_half_day_override || false }); setShowNoteModal(true); }}>Note</button>
+                        <button className="btn brd bsm" onClick={() => handleDeleteAttendance(a.id, a.date)}>Delete</button>
+                      </td></tr>
                   ))}
                   {userAtt.length === 0 && <tr><td colSpan={5} style={{ color: "#aaaacc", textAlign: "center", paddingTop: 20 }}>No records yet.</td></tr>}
                 </tbody>
@@ -2617,10 +2650,15 @@ Thank you.`);
             <div className="ps">{selectedIntern.name} - Paralegal</div>
             <div className="card">
               <table>
-                <thead><tr><th>Date</th><th>Sign In</th><th>Sign Out</th><th>Duration</th><th>Status</th><th></th></tr></thead>
+                <thead><tr><th>Date</th><th>Sign In</th><th>Sign Out</th><th>Duration</th><th>Status</th><th>Note</th><th></th></tr></thead>
                 <tbody>
                   {[...internAttendance.filter(a => a.intern_id === selectedIntern.id)].sort((a, b) => b.date.localeCompare(a.date)).map((a, i) => (
-                    <tr key={i}><td>{formatDate(a.date)}</td><td>{formatTime(a.sign_in)}</td><td>{formatTime(a.sign_out)}</td><td>{getDuration(a.sign_in, a.sign_out) || "-"}</td><td><span className={`badge ${a.sign_out ? "ba" : "bp"}`}>{a.sign_out ? "Complete" : "In Progress"}</span></td><td><button className="btn brd bsm" onClick={() => handleDeleteAttendance(a.id, a.date)}>Delete</button></td></tr>
+                    <tr key={i}><td>{formatDate(a.date)}</td><td>{formatTime(a.sign_in)}</td><td>{formatTime(a.sign_out)}</td><td>{getDuration(a.sign_in, a.sign_out) || "-"}</td><td><span className={`badge ${a.sign_out ? "ba" : "bp"}`}>{a.sign_out ? "Complete" : "In Progress"}</span></td>
+                      <td style={{ fontSize: 10, color: "#7a94aa", fontStyle: "italic" }}>{attendanceNotes.find(n => n.lawyer_id === user?.id && n.date === a.date)?.note || ""}</td>
+                      <td>
+                        <button className="btn bo bsm" onClick={() => { const ex = attendanceNotes.find(n => n.lawyer_id === user?.id && n.date === a.date); setNoteForm({ lawyer_id: user?.id, date: a.date, note: ex?.note || "", is_half_day_override: ex?.is_half_day_override || false }); setShowNoteModal(true); }}>Note</button>
+                        <button className="btn brd bsm" onClick={() => handleDeleteAttendance(a.id, a.date)}>Delete</button>
+                      </td></tr>
                   ))}
                   {internAttendance.filter(a => a.intern_id === selectedIntern.id).length === 0 && <tr><td colSpan={5} style={{ color: "#aaaacc", textAlign: "center", paddingTop: 20 }}>No records yet.</td></tr>}
                 </tbody>
@@ -2775,6 +2813,28 @@ Thank you.`);
             <div className="modal-btns">
               <button className="btn bg" style={{ flex: 1 }} onClick={handleOffboard}>Confirm Offboarding</button>
               <button className="btn bo" onClick={() => setShowOffboardModal(false)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Note Modal */}
+      {showNoteModal && (
+        <div className="modal-overlay">
+          <div className="modal">
+            <div className="modal-title">Add Note for {formatDate(noteForm.date)}</div>
+            <div className="modal-sub">Notes appear in reports and the daily attendance log.</div>
+            <div className="fld">
+              <label className="lbl">Note</label>
+              <textarea className="inp" rows={3} value={noteForm.note} onChange={e => setNoteForm(f => ({ ...f, note: e.target.value }))} placeholder="e.g. Doctor visit, left early, working remotely..." style={{ resize: "vertical" }}></textarea>
+            </div>
+            <div className="fld" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <input type="checkbox" id="halfDayOverride" checked={noteForm.is_half_day_override} onChange={e => setNoteForm(f => ({ ...f, is_half_day_override: e.target.checked }))} />
+              <label htmlFor="halfDayOverride" className="lbl" style={{ margin: 0 }}>Mark as half-day (counts as 0.5 LWP if no approved leave)</label>
+            </div>
+            <div className="modal-btns">
+              <button className="btn bg" style={{ flex: 1 }} onClick={handleSaveNote}>Save Note</button>
+              <button className="btn bo" onClick={() => setShowNoteModal(false)}>Cancel</button>
             </div>
           </div>
         </div>
