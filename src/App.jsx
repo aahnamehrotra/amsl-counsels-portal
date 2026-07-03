@@ -579,6 +579,7 @@ export default function App() {
   const [attendanceNotes, setAttendanceNotes] = useState([]);
   const [showNoteModal, setShowNoteModal] = useState(false);
   const [noteForm, setNoteForm] = useState({ lawyer_id: null, date: "", note: "", is_half_day_override: false });
+  const [adminViewCounsel, setAdminViewCounsel] = useState(null);
   const [internLeaveForm, setInternLeaveForm] = useState({ from: "", to: "", reason: "" });
   const [selectedIntern, setSelectedIntern] = useState(null);
   const [isParalegal, setIsParalegal] = useState(false);
@@ -2188,10 +2189,44 @@ Thank you.`);
                     }}>Salary</button>
                     {(l.active === false || !l.active) && <button className="btn bg bsm" onClick={() => generateExitReport(l)}>Exit Report</button>}
                     {l.active !== false && isInProbation(l.email?.toLowerCase()) && <button className="btn bg bsm" onClick={() => generateFeedbackReport(l)}>Feedback Report</button>}
+                    <button className="btn bo bsm" onClick={() => setAdminViewCounsel(adminViewCounsel?.id === l.id ? null : l)}>
+                      {adminViewCounsel?.id === l.id ? "Hide" : "Attendance"}
+                    </button>
                   </div>
                 );
               })}
             </div>
+            {/* Admin Counsel Attendance View */}
+            {adminViewCounsel && (
+              <div className="card">
+                <div className="ct">Attendance -- {adminViewCounsel.name}</div>
+                <div style={{ overflowX: "auto" }}>
+                  <table>
+                    <thead><tr><th>Date</th><th>Sign In</th><th>Sign Out</th><th>Hours</th><th>Status</th><th>Note</th><th></th></tr></thead>
+                    <tbody>
+                      {[...attendance.filter(a => a.lawyer_id === adminViewCounsel.id)].sort((a,b) => b.date.localeCompare(a.date)).map((a, i) => (
+                        <tr key={i}>
+                          <td>{formatDate(a.date)}</td>
+                          <td style={{ color: isLateArrival(a.sign_in) ? "#c62828" : "inherit" }}>{formatTime(a.sign_in)}{isLateArrival(a.sign_in) ? " (late)" : ""}</td>
+                          <td>{formatTime(a.sign_out) || "--"}</td>
+                          <td>{getDuration(a.sign_in, a.sign_out) || "--"}</td>
+                          <td><span className={`badge ${a.sign_out ? "ba" : "bp"}`}>{a.sign_out ? "Complete" : "In Progress"}</span></td>
+                          <td style={{ fontSize: 10, color: "#7a94aa", fontStyle: "italic", maxWidth: 200 }}>{attendanceNotes.find(n => n.lawyer_id === adminViewCounsel.id && n.date === a.date)?.note || ""}</td>
+                          <td>
+                            <button className="btn bo bsm" onClick={() => {
+                              const ex = attendanceNotes.find(n => n.lawyer_id === adminViewCounsel.id && n.date === a.date);
+                              setNoteForm({ lawyer_id: adminViewCounsel.id, date: a.date, note: ex?.note || "", is_half_day_override: ex?.is_half_day_override || false });
+                              setShowNoteModal(true);
+                            }}>Note</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
             {/* Correction Requests */}
             {corrections.filter(c => c.status === "pending").length > 0 && (
               <div className="card">
