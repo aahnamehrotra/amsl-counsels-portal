@@ -905,15 +905,16 @@ export default function App() {
     const salary = parseFloat(lawyer.monthly_salary) || 0;
     const FONT = "Book Antiqua"; const SZ = 20;
     const SP = { before: 0, after: 0, line: 276, lineRule: "auto" };
-    const exitDateObj = new Date(exitDate + "T00:00:00");
-    const calendarDaysInMonth = new Date(exitDateObj.getFullYear(), exitDateObj.getMonth()+1, 0).getDate();
-    const workedCalendarDays = exitDateObj.getDate() - 1;
-    const proRatedSalary = salary > 0 ? Math.round((salary / calendarDaysInMonth) * workedCalendarDays) : 0;
-    const perDayRate = salary > 0 ? Math.round(salary / calendarDaysInMonth) : 0;
-    const workDays = getWorkingDaysBetween(joinDate, exitDate);
-    const calcLWP = (rows) => {
+
+    const p = (text, opts = {}) => new Paragraph({ spacing: SP, alignment: opts.center ? AlignmentType.CENTER : opts.justify ? AlignmentType.JUSTIFIED : AlignmentType.LEFT, children: [new TextRun({ text: text || "", font: FONT, size: opts.size || SZ, bold: opts.bold || false, italics: opts.italics || false, color: opts.color || "000000" })] });
+    const empty = () => new Paragraph({ spacing: SP, children: [new TextRun({ text: "", font: FONT, size: SZ })] });
+    const sectionHead = (text) => new Paragraph({ spacing: { ...SP, before: 120 }, border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: "0a2342" } }, children: [new TextRun({ text, font: FONT, size: SZ, bold: true, color: "0a2342" })] });
+    const cell = (text, opts = {}) => new TableCell({ shading: opts.hdr ? { type: ShadingType.CLEAR, fill: "0a2342" } : opts.shade ? { type: ShadingType.CLEAR, fill: "f0f4f8" } : undefined, margins: { top: 50, bottom: 50, left: 80, right: 80 }, width: { size: opts.w || 2000, type: WidthType.DXA }, children: [new Paragraph({ spacing: SP, alignment: AlignmentType.LEFT, children: [new TextRun({ text: text || "", font: FONT, size: SZ, bold: opts.bold || opts.hdr || false, color: opts.hdr ? "ffffff" : "000000" })] })] });
+
+    const calcLWPForRange = (startDate, endDate) => {
+      const days = getWorkingDaysBetween(startDate, endDate);
       let lwp = 0;
-      rows.forEach(date => {
+      days.forEach(date => {
         const rec = lawAtt.find(a => a.date === date);
         const onApprovedLeave = lawLeaves.find(l => l.status === "approved" && l.from_date <= date && l.to_date >= date);
         const isSatOff = lawSats.find(s => s.date === date && s.status === "off");
@@ -930,11 +931,48 @@ export default function App() {
       });
       return lwp;
     };
-    const lwpDays = calcLWP(workDays);
-    const lwpDeduction = salary > 0 && lwpDays > 0 ? Math.round(perDayRate * lwpDays) : 0;
-    const actualDaysWorked = workedCalendarDays - lwpDays;
-    const netPayable = proRatedSalary - lwpDeduction;
-    const attRows = workDays.map(date => {
+
+    const calcMonthFinancials = (monthStr, rangeStart, rangeEnd) => {
+      const monthEndObj = new Date(new Date(monthStr + "-01T00:00:00").getFullYear(), new Date(monthStr + "-01T00:00:00").getMonth()+1, 0);
+      const calDays = monthEndObj.getDate();
+      const rangeEndObj = new Date(rangeEnd + "T00:00:00");
+      const workedCalDays = rangeEndObj.getDate();
+      const perDay = salary > 0 ? Math.round(salary / calDays) : 0;
+      const proRated = salary > 0 ? Math.round((salary / calDays) * workedCalDays) : 0;
+      const lwp = calcLWPForRange(rangeStart, rangeEnd);
+      const lwpDed = salary > 0 && lwp > 0 ? Math.round(perDay * lwp) : 0;
+      const net = proRated - lwpDed;
+      return { calDays, workedCalDays, perDay, proRated, lwp, lwpDed, net, actualWorked: workedCalDays - lwp };
+    };
+
+    // Determine months to calculate
+    const joinYM = joinDate.slice(0,7);
+    const exitYM = exitDate.slice(0,7);
+    const months = [];
+    let cur = new Date(joinYM + "-01T00:00:00");
+    const exitMo = new Date(exitYM + "-01T00:00:00");
+    while (cur <= exitMo) {
+      months.push(cur.getFullYear() + "-" + String(cur.getMonth()+1).padStart(2,"0"));
+      cur.setMonth(cur.getMonth()+1);
+    }
+
+    const monthFinancials = months.map(mo => {
+      const moStart = mo + "-01";
+      const moEndObj = new Date(new Date(mo + "-01T00:00:00").getFullYear(), new Date(mo + "-01T00:00:00").getMonth()+1, 0);
+      const moEnd = mo + "-" + String(moEndObj.getDate()).padStart(2,"0");
+      const rangeStart = mo === joinYM ? joinDate : moStart;
+      const rangeEnd = mo === exitYM ? (new Date(exitDate + "T00:00:00").getDate() > 1 ? exitDate.slice(0,8) + String(parseInt(exitDate.slice(8))-1).padStart(2,"0") : exitDate) : moEnd;
+      const label = new Date(mo + "-01T00:00:00").toLocaleString("en-IN", { month: "long", year: "numeric" });
+      return { mo, label, rangeStart, rangeEnd, ...calcMonthFinancials(mo, rangeStart, rangeEnd) };
+    });
+
+    const totalNet = monthFinancials.reduce((s, m) => s + m.net, 0);
+
+    const allWorkDays = getWorkingDaysBetween(joinDate, exitDate);
+    const exitParts = exitDate.split("-");
+    const lastWorkedDay = exitParts[0] + "-" + exitParts[1] + "-" + String(parseInt(exitParts[2])-1).padStart(2,"0");
+
+    const attRows = allWorkDays.map(date => {
       const rec = lawAtt.find(a => a.date === date);
       const onLeave = lawLeaves.find(l => l.status === "approved" && l.from_date <= date && l.to_date >= date);
       const isSatOff = lawSats.find(s => s.date === date && s.status === "off");
@@ -942,24 +980,34 @@ export default function App() {
       const dow = new Date(date + "T00:00:00").getDay();
       const isSat = dow === 6;
       const late = rec && isLateArrival(rec.sign_in);
-      let classification = date === exitDate ? "Terminated"
+      let classification = date === exitDate ? "Resigned"
         : onLeave ? onLeave.type
         : isSat && isSatOff ? "Saturday Off"
         : rec?.sign_in ? classifyDay(rec.sign_in, rec.sign_out)
         : "No Record";
-      if (note?.is_half_day_override && classification !== "Terminated") classification = "half-day";
+      if (note?.is_half_day_override && classification !== "Resigned") classification = "half-day";
       const noteText = note?.note || "";
       const classWithNote = noteText ? classification + " (" + noteText + ")" : classification;
       const hours = rec ? getHoursWorked(rec.sign_in, rec.sign_out) : 0;
       return [formatDate(date), getDayOfWeek(date), rec?.sign_in ? formatTime(rec.sign_in) + (late ? " (late)" : "") : "--", rec?.sign_out ? formatTime(rec.sign_out) : "--", hours > 0 ? hours + "h" : "--", classWithNote];
     });
+
     const lateCount = attRows.filter(r => r[2].includes("(late)")).length;
-    const p = (text, opts = {}) => new Paragraph({ spacing: SP, alignment: opts.center ? AlignmentType.CENTER : opts.justify ? AlignmentType.JUSTIFIED : AlignmentType.LEFT, children: [new TextRun({ text: text || "", font: FONT, size: opts.size || SZ, bold: opts.bold || false, italics: opts.italics || false, color: opts.color || "000000" })] });
-    const empty = () => new Paragraph({ spacing: SP, children: [new TextRun({ text: "", font: FONT, size: SZ })] });
-    const sectionHead = (text) => new Paragraph({ spacing: { ...SP, before: 120 }, border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: "0a2342" } }, children: [new TextRun({ text, font: FONT, size: SZ, bold: true, color: "0a2342" })] });
-    const cell = (text, opts = {}) => new TableCell({ shading: opts.hdr ? { type: ShadingType.CLEAR, fill: "0a2342" } : opts.shade ? { type: ShadingType.CLEAR, fill: "f0f4f8" } : undefined, margins: { top: 50, bottom: 50, left: 80, right: 80 }, width: { size: opts.w || 2000, type: WidthType.DXA }, children: [new Paragraph({ spacing: SP, alignment: AlignmentType.LEFT, children: [new TextRun({ text: text || "", font: FONT, size: SZ, bold: opts.bold || opts.hdr || false, color: opts.hdr ? "ffffff" : "000000" })] })] });
-    const exitParts = exitDate.split("-");
-    const lastWorkedDay = exitParts[0] + "-" + exitParts[1] + "-" + String(parseInt(exitParts[2])-1).padStart(2,"0");
+    const totalLWP = monthFinancials.reduce((s, m) => s + m.lwp, 0);
+
+    const financialRows = [];
+    monthFinancials.forEach(m => {
+      financialRows.push(new TableRow({ children: [cell(m.label, { w: 6200, hdr: true }), cell("", { w: 3160, hdr: true })] }));
+      financialRows.push(new TableRow({ children: [cell("Monthly Salary (Gross)", { w: 6200, shade: true, bold: true }), cell("Rs. " + salary.toLocaleString("en-IN"), { w: 3160 })] }));
+      financialRows.push(new TableRow({ children: [cell("Basis of Calculation", { w: 6200, shade: true, bold: true }), cell("Expected work days: " + m.workedCalDays + " of " + m.calDays + " days", { w: 3160 })] }));
+      financialRows.push(new TableRow({ children: [cell("Actual Number of Days Worked", { w: 6200, shade: true, bold: true }), cell(String(m.actualWorked), { w: 3160 })] }));
+      financialRows.push(new TableRow({ children: [cell("Per Day Entitlement", { w: 6200, shade: true, bold: true }), cell("INR " + m.perDay.toLocaleString("en-IN"), { w: 3160 })] }));
+      financialRows.push(new TableRow({ children: [cell("Pro-rated Salary", { w: 6200, shade: true, bold: true }), cell("Rs. " + m.proRated.toLocaleString("en-IN"), { w: 3160 })] }));
+      financialRows.push(new TableRow({ children: [cell("LWP Deduction (" + m.lwp + " day" + (m.lwp !== 1 ? "s" : "") + ")", { w: 6200, shade: true, bold: true }), cell("Rs. " + m.lwpDed.toLocaleString("en-IN"), { w: 3160 })] }));
+      financialRows.push(new TableRow({ children: [cell("Net Payable for " + m.label, { w: 6200, shade: true, bold: true }), cell("Rs. " + m.net.toLocaleString("en-IN"), { w: 3160 })] }));
+    });
+    financialRows.push(new TableRow({ children: [cell("TOTAL NET AMOUNT PAYABLE", { w: 6200, hdr: true }), cell("Rs. " + totalNet.toLocaleString("en-IN"), { w: 3160, hdr: true })] }));
+
     const doc = new Document({
       creator: "Aahna Mehrotra", lastModifiedBy: "Aahna Mehrotra",
       title: "Exit Report - " + lawyer.name,
@@ -979,26 +1027,21 @@ export default function App() {
         ]}),
         ...(lawyer.exit_remarks ? [empty(), sectionHead("Remarks"), empty(), new Paragraph({ spacing: SP, alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: lawyer.exit_remarks, font: FONT, size: SZ })] })] : []),
         empty(),
+        sectionHead("Remarks"),
+        empty(),
+        new Paragraph({ spacing: SP, alignment: AlignmentType.JUSTIFIED, children: [new TextRun({ text: "[Add your remarks here]", font: FONT, size: SZ, italics: true, color: "999999" })] }),
+        empty(),
         sectionHead("Attendance Summary"),
         empty(),
         new Table({ width: { size: 9360, type: WidthType.DXA }, rows: [
-          new TableRow({ children: [cell("Total Working Days in the Month (including weekends)", { w: 6200, shade: true, bold: true }), cell(String(calendarDaysInMonth), { w: 3160 })] }),
-          new TableRow({ children: [cell("Total No. of Days of Active Work until the date of termination", { w: 6200, shade: true, bold: true }), cell(String(workedCalendarDays) + " (last working day being " + formatDate(lastWorkedDay) + ")", { w: 3160 })] }),
-          new TableRow({ children: [cell("Leave Without Pay Days", { w: 6200, shade: true, bold: true }), cell(String(lwpDays), { w: 3160 })] }),
+          new TableRow({ children: [cell("Period of Employment", { w: 6200, shade: true, bold: true }), cell(formatDate(joinDate) + " to " + formatDate(exitDate), { w: 3160 })] }),
+          new TableRow({ children: [cell("Total LWP Days", { w: 6200, shade: true, bold: true }), cell(String(totalLWP), { w: 3160 })] }),
           new TableRow({ children: [cell("Late Arrivals", { w: 6200, shade: true, bold: true }), cell(String(lateCount), { w: 3160 })] }),
         ]}),
         empty(),
         sectionHead("Financial Summary"),
         empty(),
-        new Table({ width: { size: 9360, type: WidthType.DXA }, rows: [
-          new TableRow({ children: [cell("Monthly Salary (Gross)", { w: 6200, shade: true, bold: true }), cell("Rs. " + salary.toLocaleString("en-IN"), { w: 3160 })] }),
-          new TableRow({ children: [cell("Basis of Calculation", { w: 6200, shade: true, bold: true }), cell("Expected work days: " + workedCalendarDays + " of " + calendarDaysInMonth + " days", { w: 3160 })] }),
-          new TableRow({ children: [cell("Actual Number of Days Worked", { w: 6200, shade: true, bold: true }), cell(String(actualDaysWorked), { w: 3160 })] }),
-          new TableRow({ children: [cell("Per Day Entitlement", { w: 6200, shade: true, bold: true }), cell("INR " + perDayRate.toLocaleString("en-IN"), { w: 3160 })] }),
-          new TableRow({ children: [cell("Pro-rated Salary for Exit Month", { w: 6200, shade: true, bold: true }), cell("Rs. " + proRatedSalary.toLocaleString("en-IN"), { w: 3160 })] }),
-          new TableRow({ children: [cell("LWP Deduction (" + lwpDays + " day" + (lwpDays !== 1 ? "s" : "") + ")", { w: 6200, shade: true, bold: true }), cell("Rs. " + lwpDeduction.toLocaleString("en-IN"), { w: 3160 })] }),
-          new TableRow({ children: [cell("Net Amount Payable", { w: 6200, hdr: true }), cell("Rs. " + netPayable.toLocaleString("en-IN"), { w: 3160, hdr: true })] }),
-        ]}),
+        new Table({ width: { size: 9360, type: WidthType.DXA }, rows: financialRows }),
         empty(),
         new Paragraph({ spacing: SP, children: [new TextRun({ text: "Note: The above is indicative and subject to review. Tax deductions, PF, and statutory deductions are not included. Final settlement amount to be confirmed by AM Sports Law & Management Co.", font: FONT, size: 18, italics: true, color: "555555" })] }),
         empty(),
@@ -1018,6 +1061,7 @@ export default function App() {
     const blob = await Packer.toBlob(doc);
     saveAs(blob, lawyer.name.toUpperCase().replace(/ /g,"_") + "_EXIT_REPORT.docx");
   }
+
 
   async function generateFeedbackReport(lawyer) {
     const meta = COUNSEL_META[lawyer.email?.toLowerCase()];
