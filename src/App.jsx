@@ -1690,7 +1690,7 @@ Thank you.`);
                       <div style={{ fontFamily: "Raleway, sans-serif", fontSize: 13, color: "#0a2342", fontWeight: 600 }}>{l.name}</div>
                     </div>
                     <div>
-                      {notYet ? <span className="badge bout">Joining Jun 1</span>
+                      {notYet ? <span className="badge bout">Joining {formatDate(lMeta?.activeFrom || lMeta?.joinDate)}</span>
                         : lOnMat ? <span className="badge blv">Maternity</span>
                         : lInProb ? <span className="badge bprob">Probation</span>
                         : isHoliday(today) ? <span className="badge bho">Holiday</span>
