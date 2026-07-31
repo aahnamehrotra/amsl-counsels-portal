@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
-import { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, WidthType, BorderStyle, AlignmentType, ShadingType } from "docx";
-import { saveAs } from "file-saver";
+// docx and file-saver loaded dynamically when needed
 
 const SUPABASE_URL = "https://yyodgdaasgulfomrbvlz.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl5b2RnZGFhc2d1bGZvbXJidmx6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk1NDcyODMsImV4cCI6MjA5NTEyMzI4M30.-e6tqfavPmv7rmLN406-LsMW-_H0vFhUIsJmAT2xEd0";
@@ -900,6 +899,8 @@ export default function App() {
   }
 
   async function generateExitReport(lawyer) {
+    const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, WidthType, BorderStyle, AlignmentType, ShadingType } = await import("docx");
+    const { saveAs } = await import("file-saver");
     const meta = COUNSEL_META[lawyer.email?.toLowerCase()];
     const lawAtt = attendance.filter(a => a.lawyer_id === lawyer.id).sort((a,b) => a.date.localeCompare(b.date));
     const lawLeaves = leaves.filter(l => l.lawyer_id === lawyer.id);
@@ -1069,6 +1070,8 @@ export default function App() {
 
 
   async function generateFeedbackReport(lawyer) {
+    const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, WidthType, BorderStyle, AlignmentType, ShadingType } = await import("docx");
+    const { saveAs } = await import("file-saver");
     const meta = COUNSEL_META[lawyer.email?.toLowerCase()];
     const lawAtt = attendance.filter(a => a.lawyer_id === lawyer.id).sort((a,b) => a.date.localeCompare(b.date));
     const lawLeaves = leaves.filter(l => l.lawyer_id === lawyer.id);
