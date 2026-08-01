@@ -31,7 +31,7 @@ const COUNSEL_META = {
     noticeByFirm: 1, noticeByCounsel: 2, lockInEnd: "2027-07-31",
     attendanceFrom: "2026-08-01"
   },
-  "aakarshan.majumdar@amsportslaw.com": {
+  "aakarshan.majumdar.former@amsportslaw.com": {
     joinDate: "2026-06-01", probationEnd: "2026-09-01", activeFrom: "2026-06-01",
     noticeByFirm: 1, noticeByCounsel: 2, lockInEnd: "2027-08-31"
   },
