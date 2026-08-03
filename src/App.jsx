@@ -181,7 +181,7 @@ async function getSessionFromHash() {
   return null;
 }
 
-const getTodayStr = () => new Date().toISOString().split("T")[0];
+const getTodayStr = () => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0"); };
 const formatTime = s => s ? new Date(s).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "-";
 const formatDate = s => s ? new Date(s + (s.length === 10 ? "T00:00:00" : "")).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "-";
 const getDuration = (a, b) => {
