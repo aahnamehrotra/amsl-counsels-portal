@@ -2331,7 +2331,7 @@ Thank you.`);
               const daysInMonth = new Date(parseInt(currentMonth.slice(0,4)), parseInt(currentMonth.slice(5,7)), 0).getDate();
               const monthEnd = currentMonth + "-" + String(daysInMonth).padStart(2,"0");
 
-              return lawyers.filter(l => !isOnMaternity(l.email?.toLowerCase())).map(l => {
+              return lawyers.filter(l => !isOnMaternity(l.email?.toLowerCase()) && l.active !== false).map(l => {
                 const meta = COUNSEL_META[l.email?.toLowerCase()];
                 if (!meta) return null;
                 const attStart = meta.attendanceFrom || meta.joinDate;
