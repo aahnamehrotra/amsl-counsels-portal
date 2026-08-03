@@ -1678,7 +1678,7 @@ Thank you.`);
               {lawyers.filter(l => l.email?.toLowerCase() !== PARALEGAL_EMAIL && l.active !== false).map(l => {
                 const lEmail = l.email?.toLowerCase();
                 const lMeta = COUNSEL_META[lEmail];
-                const att = attendance.find(a => a.lawyer_id === l.id && a.date === today);
+                const att = attendance.find(a => String(a.lawyer_id) === String(l.id) && a.date === today);
                 const onLeave = leaves.find(lv => lv.lawyer_id === l.id && lv.status === "approved" && lv.from_date <= today && lv.to_date >= today);
                 const lOnMat = isOnMaternity(lEmail);
                 const lInProb = isInProbation(lEmail);
