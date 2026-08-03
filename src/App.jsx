@@ -1692,11 +1692,11 @@ Thank you.`);
                     <div>
                       {notYet ? <span className="badge bout">Joining {formatDate(lMeta?.activeFrom || lMeta?.joinDate)}</span>
                         : lOnMat ? <span className="badge blv">Maternity</span>
-                        : lInProb ? <span className="badge bprob">Probation</span>
-                        : isHoliday(today) ? <span className="badge bho">Holiday</span>
-                        : onLeave ? <span className="badge blv">On Leave</span>
                         : att?.sign_in && !att?.sign_out ? <span className="badge bin">In {formatTime(att.sign_in)}</span>
                         : att?.sign_out ? <span className="badge ba">Done</span>
+                        : isHoliday(today) ? <span className="badge bho">Holiday</span>
+                        : onLeave ? <span className="badge blv">On Leave</span>
+                        : lInProb ? <span className="badge bprob">Probation</span>
                         : <span className="badge bout">Not In</span>}
                     </div>
                   </div>
