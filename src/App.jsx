@@ -37,12 +37,12 @@ const COUNSEL_META = {
   },
   "ardhra.karayil@amsportslaw.com": {
     joinDate: "2026-11-02", probationEnd: "2027-02-01", activeFrom: "2026-11-02",
-    noticeByFirm: null, noticeByCounsel: null, lockInEnd: null,
+    noticeByFirm: 1, noticeByCounsel: 2, lockInEnd: null,
     attendanceFrom: "2026-11-02"
   },
   "nihal.tiwari@amsportslaw.com": {
     joinDate: "2026-11-02", probationEnd: "2027-02-01", activeFrom: "2026-11-02",
-    noticeByFirm: null, noticeByCounsel: null, lockInEnd: null,
+    noticeByFirm: 1, noticeByCounsel: 2, lockInEnd: null,
     attendanceFrom: "2026-11-02"
   },
 };
@@ -207,7 +207,7 @@ function getProRatedDays(email, type) {
   if (today < meta.probationEnd) return 0;
   const yearStart = `${new Date().getFullYear()}-01-01`;
   const effectiveStart = meta.joinDate > yearStart ? meta.probationEnd : yearStart;
-  const monthsLeft = Math.max(0, Math.ceil((new Date("2026-12-31") - new Date(effectiveStart)) / (1000 * 60 * 60 * 24 * 30.44)));
+  const monthsLeft = Math.max(0, Math.ceil((new Date(`${new Date().getFullYear()}-12-31`) - new Date(effectiveStart)) / (1000 * 60 * 60 * 24 * 30.44)));
   if (type === "Earned Leave") return Math.min(18, Math.round(monthsLeft * 1.5));
   if (type === "Casual/Sick Leave") return Math.min(7, Math.round((monthsLeft / 12) * 7));
   if (type === "Bereavement Leave (Immediate Family)") return 5;
@@ -1806,7 +1806,7 @@ Thank you.`);
               {meta?.lockInEnd && <div className="info-row"><span className="info-label">Lock-in Period</span><span className="info-val">{formatDate(meta.probationEnd)} - {formatDate(meta.lockInEnd)} {inLockIn ? <span className="badge bprob">Active</span> : today > meta.lockInEnd ? <span className="badge ba">Completed</span> : <span className="badge bout">Not Started</span>}</span></div>}
               {meta?.maternityStart && <div className="info-row"><span className="info-label">Maternity Leave</span><span className="info-val">{formatDate(meta.maternityStart)} - {formatDate(meta.maternityEnd)} {onMaternity ? <span className="badge blv">Active</span> : ""}</span></div>}
               {!meta?.isFounder && <div className="info-row"><span className="info-label">Notice Period (You)</span><span className="info-val">{meta?.noticeByCounsel ? `${meta.noticeByCounsel} month${meta.noticeByCounsel > 1 ? "s" : ""}` : "N/A"}</span></div>}
-              {!meta?.isFounder && <div className="info-row"><span className="info-label">Notice Period (Firm)</span><span className="info-val">{meta?.noticeByFirm ? `${meta.noticeByFirm} month` : "N/A"}</span></div>}
+              {!meta?.isFounder && <div className="info-row"><span className="info-label">Notice Period (Firm)</span><span className="info-val">{meta?.noticeByFirm ? (today < meta.probationEnd ? `None during probation, ${meta.noticeByFirm} month thereafter` : `${meta.noticeByFirm} month`) : "N/A"}</span></div>}
             </div>
             <div className="card">
               <div className="ct">Leave Entitlements</div>
