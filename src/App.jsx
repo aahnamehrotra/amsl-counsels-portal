@@ -1735,7 +1735,7 @@ Thank you.`);
             {(() => {
               const today = getTodayStr();
               const upcoming = lawyers
-                .filter(l => l.birthday && l.id !== user?.id)
+                .filter(l => l.birthday && l.active !== false && l.id !== user?.id)
                 .map(l => ({ ...l, bdayThisYear: getBirthdayThisYear(l.birthday) }))
                 .filter(l => l.bdayThisYear >= today)
                 .sort((a, b) => a.bdayThisYear.localeCompare(b.bdayThisYear))[0];
@@ -2165,7 +2165,7 @@ Thank you.`);
               {lawyers.map(l => {
                 const lEmail = l.email?.toLowerCase();
                 const lMeta = COUNSEL_META[lEmail];
-                const status = isOnMaternity(lEmail) ? "Maternity" : isInProbation(lEmail) ? "Probation" : lMeta?.activeFrom && today < lMeta.activeFrom ? "Not Yet Active" : "Active";
+                const status = l.active === false ? "Offboarded" : isOnMaternity(lEmail) ? "Maternity" : isInProbation(lEmail) ? "Probation" : lMeta?.activeFrom && today < lMeta.activeFrom ? "Not Yet Active" : "Active";
                 return (
                   <div key={l.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 0", borderBottom: "1px solid #1e1e2a" }}>
                     <div className="sav">{getInitials(l.name)}</div>
@@ -2176,8 +2176,8 @@ Thank you.`);
                     </div>
                     <span className={`badge ${status === "Active" ? "ba" : status === "Maternity" ? "blv" : "bprob"}`}>{status}</span>
                     {l.is_admin && <span className="badge bho">Admin</span>}
-                    {!l.is_admin && <button className="btn brd bsm" onClick={() => handleRemoveCounsel(l.id)}>Remove</button>}
-                    {!l.is_admin && <button className="btn br bsm" onClick={() => { setOffboardTarget(l); setOffboardForm({ exit_date: getTodayStr(), exit_reason: "termination", exit_remarks: "" }); setShowOffboardModal(true); }}>Offboard</button>}
+                    {!l.is_admin && l.active !== false && <button className="btn brd bsm" onClick={() => handleRemoveCounsel(l.id)}>Remove</button>}
+                    {!l.is_admin && l.active !== false && <button className="btn br bsm" onClick={() => { setOffboardTarget(l); setOffboardForm({ exit_date: getTodayStr(), exit_reason: "termination", exit_remarks: "" }); setShowOffboardModal(true); }}>Offboard</button>}
                     <button className="btn bo bsm" onClick={async () => {
                       const sal = window.prompt("Enter monthly salary for " + l.name + " (Rs.):", l.monthly_salary || "0");
                       if (sal !== null) {
@@ -2517,7 +2517,7 @@ Thank you.`);
             <div className="pt">Birthday Calendar</div>
             <div className="ps">Team birthdays and leave planning</div>
             {["01","02","03","04","05","06","07","08","09","10","11","12"].map(mm => {
-              const monthLawyers = lawyers.filter(l => l.birthday && l.birthday.split('-')[1] === mm);
+              const monthLawyers = lawyers.filter(l => l.birthday && l.active !== false && l.birthday.split('-')[1] === mm);
               if (monthLawyers.length === 0) return null;
               const monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
               return (
