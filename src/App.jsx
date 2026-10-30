@@ -206,7 +206,7 @@ function getProRatedDays(email, type) {
   const today = getTodayStr();
   if (today < meta.probationEnd) return 0;
   const yearStart = `${new Date().getFullYear()}-01-01`;
-  const effectiveStart = meta.joinDate > yearStart ? meta.probationEnd : yearStart;
+  const effectiveStart = meta.probationEnd > yearStart ? meta.probationEnd : yearStart;
   const monthsLeft = Math.max(0, Math.ceil((new Date(`${new Date().getFullYear()}-12-31`) - new Date(effectiveStart)) / (1000 * 60 * 60 * 24 * 30.44)));
   if (type === "Earned Leave") return Math.min(18, Math.round(monthsLeft * 1.5));
   if (type === "Casual/Sick Leave") return Math.min(7, Math.round((monthsLeft / 12) * 7));
