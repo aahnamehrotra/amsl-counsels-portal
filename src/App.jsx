@@ -68,7 +68,18 @@ const DEFAULT_HOLIDAYS = [
   { date: "2026-09-26", name: "Id-e-Milad", type: "optional" },
   { date: "2026-11-11", name: "Bhai Duj", type: "optional" },
   { date: "2026-11-24", name: "Guru Nanak Jayanti", type: "optional" },
+  { date: "2026-11-09", name: "Firm Holiday", type: "firm" },
 ];
+
+// Firm-wide day exceptions that apply to everyone, for attendance and pay calculations.
+// holiday = paid day off (not a working day); halfday = shortened day, 3.5h+ counts as a full day;
+// workingsat = compulsory Saturday for all (any Saturday-off record is ignored)
+const FIRM_DAY_RULES = {
+  "2026-11-06": "halfday",
+  "2026-11-07": "workingsat",
+  "2026-11-09": "holiday",
+};
+const isWorkingSat = d => FIRM_DAY_RULES[d] === "workingsat";
 
 const LEAVE_TYPES = [
   { value: "Casual/Sick Leave", code: "CL/SL", maxDays: 7, maxAtOnce: 3, probationAllowed: false },
@@ -303,11 +314,12 @@ function getHoursWorked(signIn, signOut) {
 
 function isShortSession(signIn, signOut) { if (!signIn || !signOut) return false; return getHoursWorked(signIn, signOut) < 0.5; }
 
-function classifyDay(signIn, signOut) {
+function classifyDay(signIn, signOut, date) {
   if (!signIn) return "absent";
   const hours = getHoursWorked(signIn, signOut);
   if (!signOut) return "in-progress";
   if (hours < 3.5) return "day-off";
+  if (date && FIRM_DAY_RULES[date] === "halfday") return "full-day";
   if (hours < 5.5) return "half-day";
   if (hours < 6.5) return "short-day";
   return "full-day";
@@ -341,14 +353,14 @@ function getWorkingDaysBetween(startStr, endStr) {
   const cur = new Date(start);
   while (cur <= end) {
     const dateStr = `${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,"0")}-${String(cur.getDate()).padStart(2,"0")}`;
-    if (isWorkingDay(dateStr)) days.push(dateStr);
+    if (isWorkingDay(dateStr) && FIRM_DAY_RULES[dateStr] !== "holiday") days.push(dateStr);
     cur.setDate(cur.getDate() + 1);
   }
   return days;
 }
 
 function isSaturdayOff(dateStr, saturdaysData, lawyerId) {
-  return saturdaysData.some(s => s.lawyer_id === lawyerId && s.date === dateStr && s.status === "off");
+  return saturdaysData.some(s => s.lawyer_id === lawyerId && s.date === dateStr && s.status === "off" && !isWorkingSat(dateStr));
 }
 
 function getMonthStr(dateStr) {
@@ -381,7 +393,7 @@ function getAttendanceSummary(lawyerId, lawyerJoinDate, attendanceList, leavesLi
       return;
     }
 
-    const classification = classifyDay(rec.sign_in, rec.sign_out);
+    const classification = classifyDay(rec.sign_in, rec.sign_out, date);
     const hours = getHoursWorked(rec.sign_in, rec.sign_out);
     totalHours += hours;
 
@@ -804,7 +816,7 @@ export default function App() {
     const targetDate = satPromptMode === "past" ? lastSatDate : nextSatDate;
     if (!targetDate) return;
     const monthSats = getSaturdaysInMonth(new Date(targetDate + "T00:00:00").getFullYear(), new Date(targetDate + "T00:00:00").getMonth());
-    const offsThisMonth = saturdays.filter(s => s.lawyer_id === user.id && monthSats.includes(s.date) && s.status === "off").length;
+    const offsThisMonth = saturdays.filter(s => s.lawyer_id === user.id && monthSats.includes(s.date) && s.status === "off" && !isWorkingSat(s.date)).length;
     const countsAsEl = status === "off" && offsThisMonth >= 2;
     const result = await db.insert("Saturdays", { lawyer_id: user.id, date: targetDate, status, counts_as_el: countsAsEl });
     if (Array.isArray(result) && result[0]) {
@@ -933,7 +945,7 @@ export default function App() {
       days.forEach(date => {
         const rec = lawAtt.find(a => a.date === date);
         const onApprovedLeave = lawLeaves.find(l => l.status === "approved" && l.from_date <= date && l.to_date >= date);
-        const isSatOff = lawSats.find(s => s.date === date && s.status === "off");
+        const isSatOff = lawSats.find(s => s.date === date && s.status === "off" && !isWorkingSat(date));
         const note = lawNotes.find(n => n.date === date);
         const dow = new Date(date + "T00:00:00").getDay();
         const isSat = dow === 6;
@@ -941,7 +953,7 @@ export default function App() {
         if (isSat && isSatOff) return;
         if (note?.is_half_day_override) { lwp += 0.5; return; }
         if (!rec || !rec.sign_in) { lwp += 1; return; }
-        const cl = classifyDay(rec.sign_in, rec.sign_out);
+        const cl = classifyDay(rec.sign_in, rec.sign_out, date);
         if (cl === "half-day") lwp += 0.5;
         else if (cl === "day-off") lwp += 1;
       });
@@ -991,7 +1003,7 @@ export default function App() {
     const attRows = allWorkDays.map(date => {
       const rec = lawAtt.find(a => a.date === date);
       const onLeave = lawLeaves.find(l => l.status === "approved" && l.from_date <= date && l.to_date >= date);
-      const isSatOff = lawSats.find(s => s.date === date && s.status === "off");
+      const isSatOff = lawSats.find(s => s.date === date && s.status === "off" && !isWorkingSat(date));
       const note = lawNotes.find(n => n.date === date);
       const dow = new Date(date + "T00:00:00").getDay();
       const isSat = dow === 6;
@@ -999,7 +1011,7 @@ export default function App() {
       let classification = date === exitDate ? "Resigned"
         : onLeave ? onLeave.type
         : isSat && isSatOff ? "Saturday Off"
-        : rec?.sign_in ? classifyDay(rec.sign_in, rec.sign_out)
+        : rec?.sign_in ? classifyDay(rec.sign_in, rec.sign_out, date)
         : "No Record";
       if (note?.is_half_day_override && classification !== "Resigned") classification = "half-day";
       const noteText = note?.note || "";
@@ -1105,7 +1117,7 @@ export default function App() {
       rows.forEach(date => {
         const rec = lawAtt.find(a => a.date === date);
         const onApprovedLeave = lawLeaves.find(l => l.status === "approved" && l.from_date <= date && l.to_date >= date);
-        const isSatOff = lawSats.find(s => s.date === date && s.status === "off");
+        const isSatOff = lawSats.find(s => s.date === date && s.status === "off" && !isWorkingSat(date));
         const note = lawNotes.find(n => n.date === date);
         const dow = new Date(date + "T00:00:00").getDay();
         const isSat = dow === 6;
@@ -1113,7 +1125,7 @@ export default function App() {
         if (isSat && isSatOff) return;
         if (note?.is_half_day_override) { lwp += 0.5; return; }
         if (!rec || !rec.sign_in) { lwp += 1; return; }
-        const cl = classifyDay(rec.sign_in, rec.sign_out);
+        const cl = classifyDay(rec.sign_in, rec.sign_out, date);
         if (cl === "half-day") lwp += 0.5;
         else if (cl === "day-off") lwp += 1;
       });
@@ -1125,12 +1137,12 @@ export default function App() {
     const attRows = workDays.map(date => {
       const rec = lawAtt.find(a => a.date === date);
       const onLeave = lawLeaves.find(l => l.status === "approved" && l.from_date <= date && l.to_date >= date);
-      const isSatOff = lawSats.find(s => s.date === date && s.status === "off");
+      const isSatOff = lawSats.find(s => s.date === date && s.status === "off" && !isWorkingSat(date));
       const note = lawNotes.find(n => n.date === date);
       const dow = new Date(date + "T00:00:00").getDay();
       const isSat = dow === 6;
       const late = rec && isLateArrival(rec.sign_in);
-      let classification = onLeave ? onLeave.type : isSat && isSatOff ? "Saturday Off" : rec?.sign_in ? classifyDay(rec.sign_in, rec.sign_out) : "No Record";
+      let classification = onLeave ? onLeave.type : isSat && isSatOff ? "Saturday Off" : rec?.sign_in ? classifyDay(rec.sign_in, rec.sign_out, date) : "No Record";
       if (note?.is_half_day_override) classification = "half-day";
       const noteText = note?.note || "";
       const classWithNote = noteText ? classification + " (" + noteText + ")" : classification;
@@ -1717,7 +1729,7 @@ Thank you.`);
             {/* Saturday Status */}
             {(() => {
               const monthSats = getSaturdaysInMonth(new Date().getFullYear(), new Date().getMonth());
-              const offsUsed = saturdays.filter(s => s.lawyer_id === user?.id && monthSats.includes(s.date) && s.status === "off").length;
+              const offsUsed = saturdays.filter(s => s.lawyer_id === user?.id && monthSats.includes(s.date) && s.status === "off" && !isWorkingSat(s.date)).length;
               const nextSat = monthSats.find(s => s >= today);
               const nextSatRecord = saturdays.find(s => s.lawyer_id === user?.id && s.date === nextSat);
               return (
@@ -1895,7 +1907,7 @@ Thank you.`);
           const fromDate = effectiveStart > monthStart ? effectiveStart : monthStart;
           const summary = getAttendanceSummary(user?.id, effectiveStart, attendance, leaves, fromDate, today < monthEnd ? today : monthEnd);
           const monthSats = getSaturdaysInMonth(new Date(monthStart + "T00:00:00").getFullYear(), new Date(monthStart + "T00:00:00").getMonth());
-          const satOffs = saturdays.filter(s => s.lawyer_id === user?.id && monthSats.includes(s.date) && s.status === "off").length;
+          const satOffs = saturdays.filter(s => s.lawyer_id === user?.id && monthSats.includes(s.date) && s.status === "off" && !isWorkingSat(s.date)).length;
           return (
             <div className="card" style={{ marginTop: 16 }}>
               <div className="ct">My Attendance -- {new Date(monthStart + "T00:00:00").toLocaleString("en-IN", { month: "long", year: "numeric" })}</div>
@@ -2350,7 +2362,7 @@ Thank you.`);
                 const fromDate = effectiveStart > monthStart ? effectiveStart : monthStart;
                 const summary = getAttendanceSummary(l.id, effectiveStart, attendance, leaves, fromDate, monthEnd < today ? monthEnd : today);
                 const monthSats = getSaturdaysInMonth(new Date(monthStart + "T00:00:00").getFullYear(), new Date(monthStart + "T00:00:00").getMonth());
-                const satOffs = saturdays.filter(s => s.lawyer_id === l.id && monthSats.includes(s.date) && s.status === "off").length;
+                const satOffs = saturdays.filter(s => s.lawyer_id === l.id && monthSats.includes(s.date) && s.status === "off" && !isWorkingSat(s.date)).length;
                 const satFlag = satOffs > 2;
                 const shortDayFlag = summary.shortDays > 2;
 
@@ -2438,7 +2450,7 @@ Thank you.`);
                           {summary.workingDays > 0 && getWorkingDaysBetween(fromDate, monthEnd < today ? monthEnd : today).map(date => {
                             const rec = attendance.find(a => a.lawyer_id === l.id && a.date === date);
                             const onLeave = leaves.find(lv => lv.lawyer_id === l.id && lv.status === "approved" && lv.from_date <= date && lv.to_date >= date);
-                            const classification = rec ? classifyDay(rec.sign_in, rec.sign_out) : onLeave ? "leave" : "absent";
+                            const classification = rec ? classifyDay(rec.sign_in, rec.sign_out, date) : onLeave ? "leave" : "absent";
                             const hours = rec ? getHoursWorked(rec.sign_in, rec.sign_out) : 0;
                             const late = rec && isLateArrival(rec.sign_in);
                             const bgColor = classification === "full-day" ? "#f1f8e9" : classification === "half-day" ? "#f3e5f5" : classification === "short-day" ? "#fff8e1" : classification === "leave" ? "#e3f2fd" : classification === "absent" ? "#ffebee" : "#fff";
