@@ -723,7 +723,7 @@ export default function App() {
   const inProbation = isInProbation(userEmail);
   const onMaternity = isOnMaternity(userEmail);
   const inLockIn = isInLockIn(userEmail);
-  const isHoliday = d => holidays.find(h => h.date === d);
+  const isHoliday = d => holidays.find(h => h.date === d && h.type !== "optional"); // optional holidays are working days unless claimed as leave
 
   const elBal = user ? getBalance(user.id, userEmail, leaves, "Earned Leave") : null;
   const slBal = user ? getBalance(user.id, userEmail, leaves, "Casual/Sick Leave") : null;
